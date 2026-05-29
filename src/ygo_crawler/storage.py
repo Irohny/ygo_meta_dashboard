@@ -190,51 +190,7 @@ class SQLiteStorage:
     def upsert_tournament_entry(self, record: TournamentEntryRecord) -> int:
         values = asdict(record)
         with self.transaction() as connection:
-            connection.execute(
-                """
-                INSERT INTO tournament_entries (
-                    tournament_site_id,
-                    deck_site_id,
-                    placement_label,
-                    placement_sort_value,
-                    placement_group_size,
-                    player_name,
-                    archetype_text,
-                    tournament_participants_count,
-                    deck_price_usd,
-                    deck_url,
-                    entry_source,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    :tournament_site_id,
-                    :deck_site_id,
-                    :placement_label,
-                    :placement_sort_value,
-                    :placement_group_size,
-                    :player_name,
-                    :archetype_text,
-                    :tournament_participants_count,
-                    :deck_price_usd,
-                    :deck_url,
-                    :entry_source,
-                    :created_at,
-                    :updated_at
-                )
-                ON CONFLICT(tournament_site_id, placement_sort_value, player_name) DO UPDATE SET
-                    deck_site_id = excluded.deck_site_id,
-                    placement_label = excluded.placement_label,
-                    placement_group_size = excluded.placement_group_size,
-                    archetype_text = excluded.archetype_text,
-                    tournament_participants_count = excluded.tournament_participants_count,
-                    deck_price_usd = excluded.deck_price_usd,
-                    deck_url = excluded.deck_url,
-                    entry_source = excluded.entry_source,
-                    updated_at = excluded.updated_at
-                """,
-                values,
-            )
-            row = connection.execute(
+            identity_row = connection.execute(
                 """
                 SELECT entry_id
                 FROM tournament_entries
@@ -244,9 +200,101 @@ class SQLiteStorage:
                 """,
                 (record.tournament_site_id, record.placement_sort_value, record.player_name),
             ).fetchone()
-            if row is None:
-                raise RuntimeError("Tournament entry upsert did not return an entry_id")
-            return int(row["entry_id"])
+            deck_row = None
+            if record.deck_site_id is not None:
+                deck_row = connection.execute(
+                    """
+                    SELECT entry_id
+                    FROM tournament_entries
+                    WHERE deck_site_id = ?
+                    """,
+                    (record.deck_site_id,),
+                ).fetchone()
+
+            target_entry_id: int | None = None
+            if deck_row is not None:
+                target_entry_id = int(deck_row["entry_id"])
+            elif identity_row is not None:
+                target_entry_id = int(identity_row["entry_id"])
+
+            if deck_row is not None and identity_row is not None:
+                deck_entry_id = int(deck_row["entry_id"])
+                identity_entry_id = int(identity_row["entry_id"])
+                if deck_entry_id != identity_entry_id:
+                    keep_entry_id = deck_entry_id
+                    drop_entry_id = identity_entry_id
+                    keep_has_deck = connection.execute(
+                        "SELECT 1 FROM decks WHERE entry_id = ?",
+                        (keep_entry_id,),
+                    ).fetchone()
+                    if keep_has_deck is None:
+                        connection.execute(
+                            "UPDATE decks SET entry_id = ? WHERE entry_id = ?",
+                            (keep_entry_id, drop_entry_id),
+                        )
+                    connection.execute(
+                        "DELETE FROM tournament_entries WHERE entry_id = ?",
+                        (drop_entry_id,),
+                    )
+                    target_entry_id = keep_entry_id
+
+            if target_entry_id is None:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO tournament_entries (
+                        tournament_site_id,
+                        deck_site_id,
+                        placement_label,
+                        placement_sort_value,
+                        placement_group_size,
+                        player_name,
+                        archetype_text,
+                        tournament_participants_count,
+                        deck_price_usd,
+                        deck_url,
+                        entry_source,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        :tournament_site_id,
+                        :deck_site_id,
+                        :placement_label,
+                        :placement_sort_value,
+                        :placement_group_size,
+                        :player_name,
+                        :archetype_text,
+                        :tournament_participants_count,
+                        :deck_price_usd,
+                        :deck_url,
+                        :entry_source,
+                        :created_at,
+                        :updated_at
+                    )
+                    """,
+                    values,
+                )
+                return int(cursor.lastrowid)
+
+            connection.execute(
+                """
+                UPDATE tournament_entries
+                SET tournament_site_id = :tournament_site_id,
+                    deck_site_id = :deck_site_id,
+                    placement_label = :placement_label,
+                    placement_sort_value = :placement_sort_value,
+                    placement_group_size = :placement_group_size,
+                    player_name = :player_name,
+                    archetype_text = :archetype_text,
+                    tournament_participants_count = :tournament_participants_count,
+                    deck_price_usd = :deck_price_usd,
+                    deck_url = :deck_url,
+                    entry_source = :entry_source,
+                    updated_at = :updated_at
+                WHERE entry_id = :entry_id
+                """,
+                values | {"entry_id": target_entry_id},
+            )
+            return target_entry_id
 
     def upsert_deck(self, record: DeckRecord) -> None:
         values = asdict(record)
