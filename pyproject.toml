@@ -1,0 +1,20 @@
+[project]
+name = "ygo-crawler"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.13.4",
+    "httpx>=0.28.1",
+    "streamlit>=1.45.1",
+]
+
+[project.scripts]
+ygo-crawler = "ygo_crawler.cli:main"
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "ruff>=0.15.14",
+]
