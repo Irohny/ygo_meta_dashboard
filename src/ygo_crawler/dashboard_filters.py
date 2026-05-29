@@ -4,13 +4,14 @@ from datetime import date
 
 import streamlit as st
 
+from .dashboard_cache import load_available_date_range
 from .dashboard_queries import DashboardRepository
 
 
 def render_dashboard_date_filter(repository: DashboardRepository) -> tuple[date | None, date | None]:
     st.sidebar.header("Zeitraum")
 
-    available_range = repository.get_available_date_range()
+    available_range = load_available_date_range(repository)
     if available_range is None:
         st.sidebar.info("Noch kein Datumsbereich verfuegbar.")
         return None, None

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from statistics import median
 
 import streamlit as st
 
+from ygo_crawler.dashboard_cache import load_aggregate_plot_data, load_deck_name_aggregates_extended
 from ygo_crawler.dashboard_filters import render_dashboard_date_filter
 from ygo_crawler.dashboard_queries import DashboardRepository, resolve_dashboard_db_path
 
@@ -27,6 +29,13 @@ def _latest_trend_delta(series: list[float]) -> float | None:
     if len(series) < 2:
         return None
     return round(float(series[-1]) - float(series[-2]), 2)
+
+
+def _numeric_median(rows: list[dict[str, object]], field: str) -> float | None:
+    values = [float(row[field]) for row in rows if row.get(field) is not None]
+    if not values:
+        return None
+    return float(median(values))
 
 
 def _open_decklist_detail(deck_name: str) -> None:
@@ -269,12 +278,12 @@ def _render_highlight_card(
     delta_text: str,
     supporting_text: str,
 ) -> None:
-    with column:
+    with column.container(border=True):
         if row is None:
-            st.metric(title, "-", delta="-")
+            st.metric(title, "-", delta="-", border=True)
             st.caption("Keine Daten verfuegbar.")
             return
-        st.metric(title, str(row["deck_name"]), delta=delta_text, delta_color="off")
+        st.metric(title, str(row["deck_name"]), delta=delta_text, delta_color="off", border=True)
         st.caption(supporting_text)
 
 
@@ -871,267 +880,346 @@ def _render_deck_name_bump_chart(rows: list[dict[str, object]], ranking_label: s
     )
 
 
-st.set_page_config(page_title="Aggregierte Decks", layout="wide")
-
-database_path = resolve_dashboard_db_path()
-repository = DashboardRepository(database_path)
-
-st.title("Aggregierte Decknamen")
-
-status_message = repository.status_message()
-if status_message is not None:
-    st.warning(status_message)
-    st.stop()
-
-start_date, end_date = render_dashboard_date_filter(repository)
-
-aggregate_rows = repository.list_deck_name_aggregates_extended(limit=1000, start_date=start_date, end_date=end_date)
-if not aggregate_rows:
-    st.warning("Es sind noch keine aggregierbaren Deckdaten vorhanden.")
-    st.stop()
-
-st.info(
-    "Die Detailtabellen für Kartenliste und Einzeldecks liegen auf der separaten Detailseite."
-)
-
-st.subheader("Steuerung")
-st.caption(
-    "Die Uebersicht wird ueber Stichprobengroesse, Ranking und Profilauswahl gesteuert. Die Tabelle und die Plots bleiben dabei auf derselben gefilterten Deckmenge."
-)
-
-control_col_1, control_col_2, control_col_3, control_col_4, control_col_5, control_col_6 = st.columns((1, 1, 1, 1, 1, 1))
-minimum_deck_count = control_col_1.selectbox(
-    "Mindestanzahl an Listen",
-    options=[1, 3, 5, 10, 20],
-    index=2,
-)
-table_ranking_label = control_col_2.selectbox(
-    "Ranking / Tabelle",
-    options=["Meta-Anteil", "Median Platzierungs-Perzentil", "Top-25 %", "Preis-Leistung", "Resultate letzte 30 Tage"],
-    index=0,
-)
-profile_top_n = control_col_3.selectbox(
-    "Top-N fuer Profilplot",
-    options=[3, 5, 8, 10],
-    index=1,
-)
-profile_sort_label = control_col_4.selectbox(
-    "Profilplot sortieren nach",
-    options=["Meta-Anteil", "Deckanzahl", "Ø Platzierungs-Perzentil", "Median Cardmarket €"],
-    index=0,
-)
-bump_ranking_label = control_col_5.selectbox(
-    "Bump-Chart nach",
-    options=["Meta-Anteil", "Median Platzierungs-Perzentil"],
-    index=0,
-)
-show_extended_metrics = control_col_6.toggle("Erweiterte Kennzahlen", value=False)
-
-filtered_rows = [row for row in aggregate_rows if int(row["deck_count"]) >= int(minimum_deck_count)]
-if not filtered_rows:
-    st.warning("Mit der aktuellen Mindestanzahl an Listen bleiben keine Decknamen uebrig.")
-    st.stop()
-
-ranked_rows = _sort_aggregate_rows(filtered_rows, table_ranking_label)
-highlight_rows = _select_highlight_rows(filtered_rows)
-
-profile_sort_field_by_label = {
-    "Meta-Anteil": "meta_share_pct",
-    "Deckanzahl": "deck_count",
-    "Ø Platzierungs-Perzentil": "average_placement_percentile",
-    "Median Cardmarket €": "median_cardmarket_deck_price_eur",
-}
-
-scatter_rows = repository.get_deck_name_scatter_rows(
-    limit=500,
-    min_deck_count=int(minimum_deck_count),
-    start_date=start_date,
-    end_date=end_date,
-)
-cost_rows = repository.get_deck_name_cost_performance_rows(
-    limit=500,
-    min_deck_count=int(minimum_deck_count),
-    start_date=start_date,
-    end_date=end_date,
-)
-profile_rows = repository.get_deck_name_profile_rows(
-    limit=int(profile_top_n),
-    sort_field=profile_sort_field_by_label[profile_sort_label],
-    min_deck_count=int(minimum_deck_count),
-    start_date=start_date,
-    end_date=end_date,
-)
-trend_rows = repository.get_deck_name_trend_rows(
-    limit=int(profile_top_n),
-    sort_field=profile_sort_field_by_label[profile_sort_label],
-    min_deck_count=int(minimum_deck_count),
-    start_date=start_date,
-    end_date=end_date,
-)
-table_trend_rows = repository.get_deck_name_trend_rows(
-    deck_names=[str(row["deck_name"]) for row in ranked_rows],
-    min_deck_count=int(minimum_deck_count),
-    start_date=start_date,
-    end_date=end_date,
-)
-trend_series_by_deck_name = _build_trend_series_by_deck_name(table_trend_rows)
-
-st.caption(
-    "Die Tabelle priorisiert normalisierte Vergleichswerte. In der erweiterten Ansicht kommen Sekundaerkennzahlen wie Rohplatzierung, IQRs, Teilnehmermittel und Recency hinzu."
-)
-
-st.subheader("Schnelle Einordnung")
-st.caption(
-    "Die drei Karten verdichten die aktuelle Filterlage. Preis-Leistung nutzt hier Median Platzierungs-Perzentil pro 100 EUR Median Cardmarket als einfache Heuristik."
-)
-
-highlight_col_1, highlight_col_2, highlight_col_3 = st.columns(3)
-most_played_row = highlight_rows["most_played"]
-best_median_performance_row = highlight_rows["best_median_performance"]
-best_value_row = highlight_rows["best_value"]
-
-_render_highlight_card(
-    highlight_col_1,
-    title="Meistgespieltes Deck",
-    row=most_played_row,
-    delta_text=(
-        f"{int(most_played_row['deck_count'])} Listen | {float(most_played_row['meta_share_pct']):.2f}% Meta"
-        if most_played_row is not None
-        else "-"
-    ),
-    supporting_text=(
-        f"Median Perzentil: {float(most_played_row['median_placement_percentile']):.2f} | Median Cardmarket: EUR {float(most_played_row['median_cardmarket_deck_price_eur']):.2f}"
-        if most_played_row is not None
-        and most_played_row.get("median_placement_percentile") is not None
-        and most_played_row.get("median_cardmarket_deck_price_eur") is not None
-        else "Median Perzentil oder Medianpreis fehlt."
-    ),
-)
-_render_highlight_card(
-    highlight_col_2,
-    title="Bestes Median-Perzentil",
-    row=best_median_performance_row,
-    delta_text=(
-        f"{float(best_median_performance_row['median_placement_percentile']):.2f} Median-Perzentil"
-        if best_median_performance_row is not None and best_median_performance_row.get("median_placement_percentile") is not None
-        else "-"
-    ),
-    supporting_text=(
-        f"Meta-Anteil: {float(best_median_performance_row['meta_share_pct']):.2f}% | Decks: {int(best_median_performance_row['deck_count'])}"
-        if best_median_performance_row is not None
-        else "Keine Daten verfuegbar."
-    ),
-)
-_render_highlight_card(
-    highlight_col_3,
-    title="Bestes Preis-Leistungs-Verhaeltnis",
-    row=best_value_row,
-    delta_text=(
-        f"{_value_efficiency_score(best_value_row):.2f} Perzentilpunkte / 100 EUR"
-        if best_value_row is not None and _value_efficiency_score(best_value_row) is not None
-        else "-"
-    ),
-    supporting_text=(
-        f"Median Perzentil: {float(best_value_row['median_placement_percentile']):.2f} | Median Cardmarket: EUR {float(best_value_row['median_cardmarket_deck_price_eur']):.2f}"
-        if best_value_row is not None
-        and best_value_row.get("median_placement_percentile") is not None
-        and best_value_row.get("median_cardmarket_deck_price_eur") is not None
-        else "Median Perzentil oder Medianpreis fehlt."
-    ),
-)
-
-st.subheader("Vergleichsplots")
-st.caption(
-    "Die Scatterplots stellen Popularitaet, Performance und Kosten gegenueber. Der Profilplot darunter verdichtet das Main- und Side-Profil der wichtigsten Decknamen nach dem gewaehlten Ranking-Kriterium."
-)
-
-plot_col_1, plot_col_2 = st.columns(2)
-with plot_col_1:
-    st.markdown("**Popularitaet versus Performance**")
-    st.caption(
-        "X ist der Meta-Anteil, Y das durchschnittliche Platzierungs-Perzentil. Die Bubble-Groesse zeigt die absolute Zahl an Listen, die Farbe den Median der Cardmarket-Kosten."
+def _render_control_section() -> tuple[int, str, int, str, str, bool]:
+    st.info(
+        "Die Detailtabellen für Kartenliste und Einzeldecks liegen auf der separaten Detailseite."
     )
-    _render_popularity_performance_scatter(scatter_rows)
+    with st.container(border=True):
+        st.subheader("Steuerung")
+        st.caption(
+            "Die Uebersicht wird ueber Stichprobengroesse, Ranking und Profilauswahl gesteuert. Tabelle und Plots lesen immer dieselbe gefilterte Deckmenge."
+        )
 
-with plot_col_2:
-    st.markdown("**Kosten versus Performance**")
-    st.caption(
-        "X ist der Median der Cardmarket-Kosten, Y das durchschnittliche Platzierungs-Perzentil. Bubble-Groesse und Farbe zeigen hier den Meta-Anteil."
+        control_panel_1, control_panel_2 = st.columns((1.2, 1))
+
+        with control_panel_1.container(border=True):
+            st.markdown("**Stichprobe und Ranking**")
+            sample_col_1, sample_col_2, sample_col_3 = st.columns(3)
+            minimum_deck_count = sample_col_1.selectbox(
+                "Mindestanzahl",
+                options=[1, 3, 5, 10, 20],
+                index=2,
+            )
+            table_ranking_label = sample_col_2.selectbox(
+                "Tabellen-Ranking",
+                options=["Meta-Anteil", "Median Platzierungs-Perzentil", "Top-25 %", "Preis-Leistung", "Resultate letzte 30 Tage"],
+                index=0,
+            )
+            profile_top_n = sample_col_3.selectbox(
+                "Top-N Profilplot",
+                options=[3, 5, 8, 10],
+                index=1,
+            )
+
+        with control_panel_2.container(border=True):
+            st.markdown("**Visualisierung und Tabelle**")
+            view_col_1, view_col_2 = st.columns(2)
+            profile_sort_label = view_col_1.selectbox(
+                "Profilplot sortieren nach",
+                options=["Meta-Anteil", "Deckanzahl", "Ø Platzierungs-Perzentil", "Median Cardmarket €"],
+                index=0,
+            )
+            bump_ranking_label = view_col_2.selectbox(
+                "Bump-Chart nach",
+                options=["Meta-Anteil", "Median Platzierungs-Perzentil"],
+                index=0,
+            )
+            show_extended_metrics = st.toggle("Erweiterte Kennzahlen", value=False)
+            st.caption("Schaltet Zusatzspalten wie IQR, Teilnehmermittel, Rohplatzierung und Recency in der Tabelle frei.")
+    return int(minimum_deck_count), str(table_ranking_label), int(profile_top_n), str(profile_sort_label), str(bump_ranking_label), bool(show_extended_metrics)
+
+
+def _load_filtered_rows(
+    aggregate_rows: list[dict[str, object]],
+    minimum_deck_count: int,
+    table_ranking_label: str,
+) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, dict[str, object] | None]]:
+    filtered_rows = [row for row in aggregate_rows if int(row["deck_count"]) >= minimum_deck_count]
+    if not filtered_rows:
+        st.warning("Mit der aktuellen Mindestanzahl an Listen bleiben keine Decknamen uebrig.")
+        st.stop()
+
+    ranked_rows = _sort_aggregate_rows(filtered_rows, table_ranking_label)
+    highlight_rows = _select_highlight_rows(filtered_rows)
+    return filtered_rows, ranked_rows, highlight_rows
+
+
+def _load_plot_data(
+    repository: DashboardRepository,
+    ranked_rows: list[dict[str, object]],
+    minimum_deck_count: int,
+    profile_top_n: int,
+    profile_sort_label: str,
+    start_date: object,
+    end_date: object,
+) -> dict[str, object]:
+    profile_sort_field_by_label = {
+        "Meta-Anteil": "meta_share_pct",
+        "Deckanzahl": "deck_count",
+        "Ø Platzierungs-Perzentil": "average_placement_percentile",
+        "Median Cardmarket €": "median_cardmarket_deck_price_eur",
+    }
+    selected_sort_field = profile_sort_field_by_label[profile_sort_label]
+    plot_data = load_aggregate_plot_data(
+        repository,
+        ranked_deck_names=tuple(str(row["deck_name"]) for row in ranked_rows),
+        minimum_deck_count=minimum_deck_count,
+        profile_top_n=profile_top_n,
+        sort_field=selected_sort_field,
+        start_date=start_date,
+        end_date=end_date,
     )
-    _render_cost_performance_scatter(cost_rows)
+    return {
+        "scatter_rows": plot_data["scatter_rows"],
+        "cost_rows": plot_data["cost_rows"],
+        "profile_rows": plot_data["profile_rows"],
+        "trend_rows": plot_data["trend_rows"],
+        "trend_series_by_deck_name": _build_trend_series_by_deck_name(plot_data["table_trend_rows"]),
+    }
 
-st.markdown("**Deckprofil der wichtigsten Decknamen**")
-st.caption(
-    "Der Profilplot kombiniert Main Deck und Side Deck fuer die aktuell wichtigsten Decknamen und zeigt pro Deckbereich die durchschnittlichen Engine- und Non-Engine-Anteile."
-)
-_render_deck_profile_chart(profile_rows)
 
-st.subheader("Monatliche Entwicklung")
-st.caption(
-    "Die Trendansicht verfolgt dieselben Top-N Decknamen wie der Profilplot ueber die Zeit. Sie zeigt Meta-Anteil, Performance, Preis-Drift und Stabilitaet in einer gemeinsamen Monatsansicht."
-)
-
-trend_col_1, trend_col_2 = st.columns(2)
-with trend_col_1:
-    st.markdown("**Meta-Anteile nach Monat**")
+def _render_highlight_section(
+    highlight_rows: dict[str, dict[str, object] | None],
+    filtered_rows: list[dict[str, object]],
+) -> None:
     st.caption(
-        "Jede Zelle zeigt, wie stark ein Deckname innerhalb des jeweiligen Monats im gefilterten Feld vertreten war. So werden Aufstieg, Rueckgang und saisonale Luecken sofort sichtbar."
+        "Die Tabelle priorisiert normalisierte Vergleichswerte. In der erweiterten Ansicht kommen Sekundaerkennzahlen wie Rohplatzierung, IQRs, Teilnehmermittel und Recency hinzu."
     )
-    _render_deck_name_meta_heatmap(trend_rows)
+    with st.container(border=True):
+        st.subheader("Schnelle Einordnung")
+        st.caption(
+            "Die drei Karten verdichten die aktuelle Filterlage. Preis-Leistung nutzt hier Median Platzierungs-Perzentil pro 100 EUR Median Cardmarket als einfache Heuristik."
+        )
 
-with trend_col_2:
-    st.markdown("**Performance-Drift nach Monat**")
+        summary_col_1, summary_col_2, summary_col_3, summary_col_4 = st.columns(4)
+        summary_col_1.metric("Decknamen im Filter", len(filtered_rows), border=True)
+        summary_col_2.metric(
+            "Listen im Filter",
+            sum(int(row.get("deck_count") or 0) for row in filtered_rows),
+            border=True,
+        )
+        median_meta_share = _numeric_median(filtered_rows, "meta_share_pct")
+        summary_col_3.metric(
+            "Median Meta %",
+            f"{median_meta_share:.2f}" if median_meta_share is not None else "-",
+            border=True,
+        )
+        median_price = _numeric_median(filtered_rows, "median_cardmarket_deck_price_eur")
+        summary_col_4.metric(
+            "Median Cardmarket €",
+            f"EUR {median_price:.2f}" if median_price is not None else "-",
+            border=True,
+        )
+
+        highlight_col_1, highlight_col_2, highlight_col_3 = st.columns(3)
+        most_played_row = highlight_rows["most_played"]
+        best_median_performance_row = highlight_rows["best_median_performance"]
+        best_value_row = highlight_rows["best_value"]
+
+        _render_highlight_card(
+            highlight_col_1,
+            title="Meistgespieltes Deck",
+            row=most_played_row,
+            delta_text=(
+                f"{int(most_played_row['deck_count'])} Listen | {float(most_played_row['meta_share_pct']):.2f}% Meta"
+                if most_played_row is not None
+                else "-"
+            ),
+            supporting_text=(
+                f"Median Perzentil: {float(most_played_row['median_placement_percentile']):.2f} | Median Cardmarket: EUR {float(most_played_row['median_cardmarket_deck_price_eur']):.2f}"
+                if most_played_row is not None
+                and most_played_row.get("median_placement_percentile") is not None
+                and most_played_row.get("median_cardmarket_deck_price_eur") is not None
+                else "Median Perzentil oder Medianpreis fehlt."
+            ),
+        )
+        _render_highlight_card(
+            highlight_col_2,
+            title="Bestes Median-Perzentil",
+            row=best_median_performance_row,
+            delta_text=(
+                f"{float(best_median_performance_row['median_placement_percentile']):.2f} Median-Perzentil"
+                if best_median_performance_row is not None and best_median_performance_row.get("median_placement_percentile") is not None
+                else "-"
+            ),
+            supporting_text=(
+                f"Meta-Anteil: {float(best_median_performance_row['meta_share_pct']):.2f}% | Decks: {int(best_median_performance_row['deck_count'])}"
+                if best_median_performance_row is not None
+                else "Keine Daten verfuegbar."
+            ),
+        )
+        _render_highlight_card(
+            highlight_col_3,
+            title="Bestes Preis-Leistungs-Verhaeltnis",
+            row=best_value_row,
+            delta_text=(
+                f"{_value_efficiency_score(best_value_row):.2f} Perzentilpunkte / 100 EUR"
+                if best_value_row is not None and _value_efficiency_score(best_value_row) is not None
+                else "-"
+            ),
+            supporting_text=(
+                f"Median Perzentil: {float(best_value_row['median_placement_percentile']):.2f} | Median Cardmarket: EUR {float(best_value_row['median_cardmarket_deck_price_eur']):.2f}"
+                if best_value_row is not None
+                and best_value_row.get("median_placement_percentile") is not None
+                and best_value_row.get("median_cardmarket_deck_price_eur") is not None
+                else "Median Perzentil oder Medianpreis fehlt."
+            ),
+        )
+
+
+def _render_plot_section(plot_data: dict[str, object]) -> None:
+    st.subheader("Vergleichsplots")
     st.caption(
-        "Die Linien zeigen das Median Platzierungs-Perzentil pro Monat. Der Tooltip enthaelt zusaetzlich IQR, Monatsanteil und Median Cardmarket, um stabile von swingigen Decks besser zu trennen."
+        "Die Scatterplots stellen Popularitaet, Performance und Kosten gegenueber. Der Profilplot darunter verdichtet das Main- und Side-Profil der wichtigsten Decknamen nach dem gewaehlten Ranking-Kriterium."
     )
-    _render_deck_name_performance_drift(trend_rows)
 
-trend_col_3, trend_col_4 = st.columns(2)
-with trend_col_3:
-    st.markdown("**Preis-Drift nach Monat**")
+    plot_col_1, plot_col_2 = st.columns(2)
+    with plot_col_1.container(border=True):
+        st.markdown("**Popularitaet versus Performance**")
+        st.caption(
+            "X ist der Meta-Anteil, Y das durchschnittliche Platzierungs-Perzentil. Die Bubble-Groesse zeigt die absolute Zahl an Listen, die Farbe den Median der Cardmarket-Kosten."
+        )
+        _render_popularity_performance_scatter(plot_data["scatter_rows"])
+
+    with plot_col_2.container(border=True):
+        st.markdown("**Kosten versus Performance**")
+        st.caption(
+            "X ist der Median der Cardmarket-Kosten, Y das durchschnittliche Platzierungs-Perzentil. Bubble-Groesse und Farbe zeigen hier den Meta-Anteil."
+        )
+        _render_cost_performance_scatter(plot_data["cost_rows"])
+
+    with st.container(border=True):
+        st.markdown("**Deckprofil der wichtigsten Decknamen**")
+        st.caption(
+            "Der Profilplot kombiniert Main Deck und Side Deck fuer die aktuell wichtigsten Decknamen und zeigt pro Deckbereich die durchschnittlichen Engine- und Non-Engine-Anteile."
+        )
+        _render_deck_profile_chart(plot_data["profile_rows"])
+
+
+def _render_trend_section(plot_data: dict[str, object], bump_ranking_label: str) -> None:
+    trend_rows = plot_data["trend_rows"]
+    st.subheader("Monatliche Entwicklung")
     st.caption(
-        "Die Linien zeigen den monatlichen Median der Cardmarket-Kosten. Der Tooltip enthaelt zusaetzlich Preis-IQR, Meta-Anteil und Median-Perzentil, damit Preisspruenge direkt eingeordnet werden koennen."
+        "Die Trendansicht verfolgt dieselben Top-N Decknamen wie der Profilplot ueber die Zeit. Sie zeigt Meta-Anteil, Performance, Preis-Drift und Stabilitaet in einer gemeinsamen Monatsansicht."
     )
-    _render_deck_name_price_drift(trend_rows)
 
-with trend_col_4:
-    st.markdown("**Stabilitaet nach Monat**")
+    trend_col_1, trend_col_2 = st.columns(2)
+    with trend_col_1:
+        st.markdown("**Meta-Anteile nach Monat**")
+        st.caption(
+            "Jede Zelle zeigt, wie stark ein Deckname innerhalb des jeweiligen Monats im gefilterten Feld vertreten war. So werden Aufstieg, Rueckgang und saisonale Luecken sofort sichtbar."
+        )
+        _render_deck_name_meta_heatmap(trend_rows)
+
+    with trend_col_2:
+        st.markdown("**Performance-Drift nach Monat**")
+        st.caption(
+            "Die Linien zeigen das Median Platzierungs-Perzentil pro Monat. Der Tooltip enthaelt zusaetzlich IQR, Monatsanteil und Median Cardmarket, um stabile von swingigen Decks besser zu trennen."
+        )
+        _render_deck_name_performance_drift(trend_rows)
+
+    trend_col_3, trend_col_4 = st.columns(2)
+    with trend_col_3:
+        st.markdown("**Preis-Drift nach Monat**")
+        st.caption(
+            "Die Linien zeigen den monatlichen Median der Cardmarket-Kosten. Der Tooltip enthaelt zusaetzlich Preis-IQR, Meta-Anteil und Median-Perzentil, damit Preisspruenge direkt eingeordnet werden koennen."
+        )
+        _render_deck_name_price_drift(trend_rows)
+
+    with trend_col_4:
+        st.markdown("**Stabilitaet nach Monat**")
+        st.caption(
+            "Hier steht die Streuung der Ergebnisse im Fokus. Niedrigere Perzentil-IQR-Werte bedeuten, dass ein Deck in diesem Monat konstanter performt hat."
+        )
+        _render_deck_name_stability_chart(trend_rows)
+
+    st.markdown("**Rangverlauf der wichtigsten Decknamen**")
     st.caption(
-        "Hier steht die Streuung der Ergebnisse im Fokus. Niedrigere Perzentil-IQR-Werte bedeuten, dass ein Deck in diesem Monat konstanter performt hat."
+        "Der Bump-Chart ordnet dieselben Decknamen pro Monat neu ein. Je nach Steuerung basiert der Rang entweder auf Meta-Anteil oder auf dem Median Platzierungs-Perzentil. Rang 1 liegt oben."
     )
-    _render_deck_name_stability_chart(trend_rows)
+    _render_deck_name_bump_chart(trend_rows, bump_ranking_label)
 
-st.markdown("**Rangverlauf der wichtigsten Decknamen**")
-st.caption(
-    "Der Bump-Chart ordnet dieselben Decknamen pro Monat neu ein. Je nach Steuerung basiert der Rang entweder auf Meta-Anteil oder auf dem Median Platzierungs-Perzentil. Rang 1 liegt oben."
-)
-_render_deck_name_bump_chart(trend_rows, bump_ranking_label)
 
-st.subheader("Alle aggregierten Decknamen")
-st.caption(
-    "Die Tabelle bleibt die Uebersicht. Fuer konkrete Turnierlisten kannst du einen Decknamen direkt an die Decklisten-Seite uebergeben."
-)
+def _render_table_section(
+    ranked_rows: list[dict[str, object]],
+    show_extended_metrics: bool,
+    trend_series_by_deck_name: dict[str, dict[str, list[float]]],
+) -> None:
+    st.subheader("Alle aggregierten Decknamen")
+    st.caption(
+        "Die Tabelle bleibt die Uebersicht. Fuer konkrete Turnierlisten kannst du einen Decknamen direkt an die Decklisten-Seite uebergeben."
+    )
 
-detail_nav_col_1, detail_nav_col_2 = st.columns((3, 1))
-visible_deck_names = [str(row["deck_name"]) for row in ranked_rows]
-if st.session_state.get(DETAIL_NAVIGATION_STATE_KEY) not in visible_deck_names:
-    st.session_state[DETAIL_NAVIGATION_STATE_KEY] = visible_deck_names[0]
+    with st.container(border=True):
+        detail_nav_col_1, detail_nav_col_2 = st.columns((3, 1))
+        visible_deck_names = [str(row["deck_name"]) for row in ranked_rows]
+        if st.session_state.get(DETAIL_NAVIGATION_STATE_KEY) not in visible_deck_names:
+            st.session_state[DETAIL_NAVIGATION_STATE_KEY] = visible_deck_names[0]
 
-selected_detail_deck_name = detail_nav_col_1.selectbox(
-    "Deckname zur Detailseite",
-    options=visible_deck_names,
-    key=DETAIL_NAVIGATION_STATE_KEY,
-)
-if detail_nav_col_2.button("Decklisten-Details oeffnen"):
-    _open_decklist_detail(selected_detail_deck_name)
+        selected_detail_deck_name = detail_nav_col_1.selectbox(
+            "Deckname zur Detailseite",
+            options=visible_deck_names,
+            key=DETAIL_NAVIGATION_STATE_KEY,
+        )
+        if detail_nav_col_2.button("Decklisten-Details oeffnen"):
+            _open_decklist_detail(selected_detail_deck_name)
 
-st.dataframe(
-    _build_aggregate_table_rows(
+    st.dataframe(
+        _build_aggregate_table_rows(
+            ranked_rows,
+            show_extended_metrics=show_extended_metrics,
+            trend_series_by_deck_name=trend_series_by_deck_name,
+        ),
+        hide_index=True,
+        width="stretch",
+        column_config=_aggregate_column_config(),
+    )
+
+
+def main() -> None:
+    st.set_page_config(page_title="Aggregierte Decks", layout="wide")
+
+    database_path = resolve_dashboard_db_path()
+    repository = DashboardRepository(database_path)
+
+    st.title("Aggregierte Decknamen")
+
+    status_message = repository.status_message()
+    if status_message is not None:
+        st.warning(status_message)
+        st.stop()
+
+    start_date, end_date = render_dashboard_date_filter(repository)
+    aggregate_rows = load_deck_name_aggregates_extended(
+        repository,
+        limit=1000,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if not aggregate_rows:
+        st.warning("Es sind noch keine aggregierbaren Deckdaten vorhanden.")
+        st.stop()
+
+    minimum_deck_count, table_ranking_label, profile_top_n, profile_sort_label, bump_ranking_label, show_extended_metrics = _render_control_section()
+    filtered_rows, ranked_rows, highlight_rows = _load_filtered_rows(aggregate_rows, minimum_deck_count, table_ranking_label)
+    plot_data = _load_plot_data(
+        repository,
         ranked_rows,
-        show_extended_metrics=show_extended_metrics,
-        trend_series_by_deck_name=trend_series_by_deck_name,
-    ),
-    hide_index=True,
-    width="stretch",
-    column_config=_aggregate_column_config(),
-)
+        minimum_deck_count,
+        profile_top_n,
+        profile_sort_label,
+        start_date,
+        end_date,
+    )
+
+    _render_highlight_section(highlight_rows, filtered_rows)
+    _render_plot_section(plot_data)
+    _render_trend_section(plot_data, bump_ranking_label)
+    _render_table_section(
+        ranked_rows,
+        show_extended_metrics,
+        plot_data["trend_series_by_deck_name"],
+    )
+
+
+main()

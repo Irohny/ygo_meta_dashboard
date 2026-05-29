@@ -5,6 +5,7 @@ from statistics import median
 
 import streamlit as st
 
+from ygo_crawler.dashboard_cache import load_non_engine_page_bundle
 from ygo_crawler.dashboard_filters import render_dashboard_date_filter
 from ygo_crawler.dashboard_queries import DashboardRepository, resolve_dashboard_db_path
 
@@ -47,6 +48,39 @@ def _section_header(title: str, description: str | None = None) -> None:
     st.subheader(title)
     if description:
         st.caption(description)
+
+
+def _render_metric(
+    column: st.delta_generator.DeltaGenerator,
+    label: str,
+    value: str,
+    delta: str | None = None,
+) -> None:
+    if delta is None:
+        column.metric(label, value, border=True)
+        return
+    column.metric(label, value, delta=delta, delta_color="off", border=True)
+
+
+def _render_metric_group(
+    column: st.delta_generator.DeltaGenerator,
+    title: str,
+    metrics: list[tuple[str, str, str | None]],
+    *,
+    columns: int,
+    description: str | None = None,
+) -> None:
+    with column.container(border=True):
+        st.markdown(f"**{title}**")
+        if description:
+            st.caption(description)
+
+        for offset in range(0, len(metrics), columns):
+            metric_columns = st.columns(columns)
+            for metric_column, (label, value, delta) in zip(
+                metric_columns, metrics[offset : offset + columns]
+            ):
+                _render_metric(metric_column, label, value, delta)
 
 
 def _classification_label(classification: str) -> str:
@@ -295,48 +329,67 @@ def _render_overview_metrics(
         else None
     )
 
-    primary_cols = st.columns(6)
-    primary_cols[0].metric("Non-Engine Karten", len(non_engine_rows))
-    primary_cols[1].metric("Candidate Splash Karten", len(candidate_splash_rows))
-    primary_cols[2].metric(
-        "Candidate-Anteil am Pool", _format_percent(candidate_share_pct)
+    overview_col_1, overview_col_2 = st.columns(2)
+    _render_metric_group(
+        overview_col_1,
+        "Pool und Konzentration",
+        [
+            ("Non-Engine Karten", _format_count(len(non_engine_rows)), None),
+            (
+                "Candidate Splash Karten",
+                _format_count(len(candidate_splash_rows)),
+                None,
+            ),
+            ("Candidate-Anteil am Pool", _format_percent(candidate_share_pct), None),
+            (
+                "Median Spread Non-Engine",
+                _format_percent(_numeric_median(non_engine_rows, "deck_group_spread_pct")),
+                None,
+            ),
+            (
+                "Median Max Gruppenanteil Splash",
+                _format_percent(_numeric_median(candidate_splash_rows, "max_group_share_pct")),
+                None,
+            ),
+            (
+                "Median Archetype Match Splash",
+                _format_percent(_numeric_median(candidate_splash_rows, "archetype_match_share_pct")),
+                None,
+            ),
+        ],
+        columns=2,
     )
-    primary_cols[3].metric(
-        "Median Spread Non-Engine",
-        _format_percent(_numeric_median(non_engine_rows, "deck_group_spread_pct")),
-    )
-    primary_cols[4].metric(
-        "Median Max Gruppenanteil Splash",
-        _format_percent(_numeric_median(candidate_splash_rows, "max_group_share_pct")),
-    )
-    primary_cols[5].metric(
-        "Median Deckkostenbeitrag Non-Engine",
-        _format_currency(
-            _numeric_median(non_engine_rows, "expected_deck_cost_contribution_eur")
-        ),
-    )
-
-    secondary_cols = st.columns(5)
-    secondary_cols[0].metric(
-        "Non-Engine Main-first", _count_usage_profile(non_engine_rows, "Main-first")
-    )
-    secondary_cols[1].metric(
-        "Non-Engine Side-first", _count_usage_profile(non_engine_rows, "Side-first")
-    )
-    secondary_cols[2].metric(
-        "Non-Engine Hybrid", _count_usage_profile(non_engine_rows, "Hybrid")
-    )
-    secondary_cols[3].metric(
-        "Median Cardmarket Non-Engine",
-        _format_currency(
-            _numeric_median(non_engine_rows, "average_cardmarket_price_eur")
-        ),
-    )
-    secondary_cols[4].metric(
-        "Median Archetype Match Splash",
-        _format_percent(
-            _numeric_median(candidate_splash_rows, "archetype_match_share_pct")
-        ),
+    _render_metric_group(
+        overview_col_2,
+        "Nutzungsprofile und Kosten",
+        [
+            (
+                "Non-Engine Main-first",
+                _format_count(_count_usage_profile(non_engine_rows, "Main-first")),
+                None,
+            ),
+            (
+                "Non-Engine Side-first",
+                _format_count(_count_usage_profile(non_engine_rows, "Side-first")),
+                None,
+            ),
+            (
+                "Non-Engine Hybrid",
+                _format_count(_count_usage_profile(non_engine_rows, "Hybrid")),
+                None,
+            ),
+            (
+                "Median Cardmarket Non-Engine",
+                _format_currency(_numeric_median(non_engine_rows, "average_cardmarket_price_eur")),
+                None,
+            ),
+            (
+                "Median Deckkostenbeitrag Non-Engine",
+                _format_currency(_numeric_median(non_engine_rows, "expected_deck_cost_contribution_eur")),
+                None,
+            ),
+        ],
+        columns=2,
     )
 
 
@@ -733,48 +786,57 @@ def _render_candidate_splash_summary(candidate_rows: list[dict[str, object]]) ->
     spread_anchor = _top_row(candidate_rows, "deck_group_spread_pct")
     cost_anchor = _top_row(candidate_rows, "expected_deck_cost_contribution_eur")
 
-    metric_cols = st.columns(5)
-    metric_cols[0].metric("Candidate Splash Karten", len(candidate_rows))
-    metric_cols[1].metric(
-        "Median Archetype Match",
-        _format_percent(_numeric_median(candidate_rows, "archetype_match_share_pct")),
+    summary_col_1, summary_col_2 = st.columns(2)
+    _render_metric_group(
+        summary_col_1,
+        "Grenzraum-KPIs",
+        [
+            ("Candidate Splash Karten", _format_count(len(candidate_rows)), None),
+            (
+                "Median Archetype Match",
+                _format_percent(_numeric_median(candidate_rows, "archetype_match_share_pct")),
+                None,
+            ),
+            (
+                "Median Max Gruppenanteil",
+                _format_percent(_numeric_median(candidate_rows, "max_group_share_pct")),
+                None,
+            ),
+            (
+                "Median globale Inklusion",
+                _format_percent(_numeric_median(candidate_rows, "global_inclusion_rate_pct")),
+                None,
+            ),
+            ("Main-first Anteil", _format_percent(main_first_share_pct), None),
+        ],
+        columns=2,
     )
-    metric_cols[2].metric(
-        "Median Max Gruppenanteil",
-        _format_percent(_numeric_median(candidate_rows, "max_group_share_pct")),
-    )
-    metric_cols[3].metric(
-        "Median globale Inklusion",
-        _format_percent(_numeric_median(candidate_rows, "global_inclusion_rate_pct")),
-    )
-    metric_cols[4].metric("Main-first Anteil", _format_percent(main_first_share_pct))
-
-    highlight_cols = st.columns(4)
-    highlight_cols[0].metric(
-        "Hoechster Archetype-Match",
-        str((archetype_anchor or {}).get("card_name") or "-"),
-        _format_percent((archetype_anchor or {}).get("archetype_match_share_pct")),
-        delta_color="off",
-    )
-    highlight_cols[1].metric(
-        "Staerkste Gruppenkonzentration",
-        str((concentration_anchor or {}).get("card_name") or "-"),
-        _format_percent((concentration_anchor or {}).get("max_group_share_pct")),
-        delta_color="off",
-    )
-    highlight_cols[2].metric(
-        "Breitestes Splash-Paket",
-        str((spread_anchor or {}).get("card_name") or "-"),
-        _format_percent((spread_anchor or {}).get("deck_group_spread_pct")),
-        delta_color="off",
-    )
-    highlight_cols[3].metric(
-        "Teuerster Deckkostenbeitrag",
-        str((cost_anchor or {}).get("card_name") or "-"),
-        _format_currency(
-            (cost_anchor or {}).get("expected_deck_cost_contribution_eur")
-        ),
-        delta_color="off",
+    _render_metric_group(
+        summary_col_2,
+        "Leitkarten",
+        [
+            (
+                "Hoechster Archetype-Match",
+                str((archetype_anchor or {}).get("card_name") or "-"),
+                _format_percent((archetype_anchor or {}).get("archetype_match_share_pct")),
+            ),
+            (
+                "Staerkste Gruppenkonzentration",
+                str((concentration_anchor or {}).get("card_name") or "-"),
+                _format_percent((concentration_anchor or {}).get("max_group_share_pct")),
+            ),
+            (
+                "Breitestes Splash-Paket",
+                str((spread_anchor or {}).get("card_name") or "-"),
+                _format_percent((spread_anchor or {}).get("deck_group_spread_pct")),
+            ),
+            (
+                "Teuerster Deckkostenbeitrag",
+                str((cost_anchor or {}).get("card_name") or "-"),
+                _format_currency((cost_anchor or {}).get("expected_deck_cost_contribution_eur")),
+            ),
+        ],
+        columns=1,
     )
 
     st.caption(
@@ -973,27 +1035,28 @@ def _render_performance_summary(rows: list[dict[str, object]]) -> None:
         None,
     )
 
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("Feldmittel Ø Perzentil", _format_percent(field_average))
-    metric_cols[1].metric(
-        "Bester Median",
-        str(best_median_row.get("card_name") or "-"),
-        _format_percent(best_median_row.get("median_placement_percentile")),
-        delta_color="off",
-    )
-    metric_cols[2].metric(
-        "Bestes Delta vs Feld",
-        str(best_delta_row.get("card_name") or "-"),
-        _format_delta_pp(
-            best_delta_row.get("delta_vs_field_average_placement_percentile")
-        ),
-        delta_color="off",
-    )
-    metric_cols[3].metric(
-        "Stabilster Performer",
-        str((most_stable_row or {}).get("card_name") or "-"),
-        _format_percent((most_stable_row or {}).get("placement_percentile_iqr")),
-        delta_color="off",
+    _render_metric_group(
+        st.container(),
+        "Performance-KPIs",
+        [
+            ("Feldmittel Ø Perzentil", _format_percent(field_average), None),
+            (
+                "Bester Median",
+                str(best_median_row.get("card_name") or "-"),
+                _format_percent(best_median_row.get("median_placement_percentile")),
+            ),
+            (
+                "Bestes Delta vs Feld",
+                str(best_delta_row.get("card_name") or "-"),
+                _format_delta_pp(best_delta_row.get("delta_vs_field_average_placement_percentile")),
+            ),
+            (
+                "Stabilster Performer",
+                str((most_stable_row or {}).get("card_name") or "-"),
+                _format_percent((most_stable_row or {}).get("placement_percentile_iqr")),
+            ),
+        ],
+        columns=2,
     )
 
     st.caption(
@@ -1489,105 +1552,99 @@ def _render_monthly_trend_metrics(
         f"Monatlicher Trend fuer den aktiven Datumsfilter. Letzter ausgewerteter Monat: {latest_month_label}. Die Deltas beziehen sich jeweils auf den direkt vorherigen verfuegbaren Monat."
     )
 
-    metric_cols = st.columns(6)
-    metric_cols[0].metric(
-        "Decks im letzten Monat",
-        _format_count(
+    _render_metric_group(
+        st.container(),
+        "Letzter Monatsstand",
+        [
             (
-                latest_main_role_row or latest_side_role_row or latest_subrole_row or {}
-            ).get("deck_count")
-        ),
-        _trend_delta_count(
-            (
-                latest_main_role_row or latest_side_role_row or latest_subrole_row or {}
-            ).get("deck_count"),
-            (
-                (
-                    previous_main_role_row
-                    or previous_side_role_row
-                    or previous_subrole_row
-                    or {}
-                ).get("deck_count")
-                if (
-                    previous_main_role_row
-                    or previous_side_role_row
-                    or previous_subrole_row
-                )
-                else None
+                "Decks im letzten Monat",
+                _format_count(
+                    (
+                        latest_main_role_row or latest_side_role_row or latest_subrole_row or {}
+                    ).get("deck_count")
+                ),
+                _trend_delta_count(
+                    (
+                        latest_main_role_row or latest_side_role_row or latest_subrole_row or {}
+                    ).get("deck_count"),
+                    (
+                        (
+                            previous_main_role_row
+                            or previous_side_role_row
+                            or previous_subrole_row
+                            or {}
+                        ).get("deck_count")
+                        if (
+                            previous_main_role_row
+                            or previous_side_role_row
+                            or previous_subrole_row
+                        )
+                        else None
+                    ),
+                ),
             ),
-        ),
-        delta_color="off",
-    )
-    metric_cols[1].metric(
-        "Main Non-Engine %",
-        _format_percent(
-            (latest_main_balance_row or {}).get("average_non_engine_share_pct")
-        ),
-        _trend_delta_points(
-            (latest_main_balance_row or {}).get("average_non_engine_share_pct"),
             (
-                (previous_main_balance_row or {}).get("average_non_engine_share_pct")
-                if previous_main_balance_row
-                else None
+                "Main Non-Engine %",
+                _format_percent((latest_main_balance_row or {}).get("average_non_engine_share_pct")),
+                _trend_delta_points(
+                    (latest_main_balance_row or {}).get("average_non_engine_share_pct"),
+                    (
+                        (previous_main_balance_row or {}).get("average_non_engine_share_pct")
+                        if previous_main_balance_row
+                        else None
+                    ),
+                ),
             ),
-        ),
-        delta_color="off",
-    )
-    metric_cols[2].metric(
-        "Side Non-Engine %",
-        _format_percent(
-            (latest_side_balance_row or {}).get("average_non_engine_share_pct")
-        ),
-        _trend_delta_points(
-            (latest_side_balance_row or {}).get("average_non_engine_share_pct"),
             (
-                (previous_side_balance_row or {}).get("average_non_engine_share_pct")
-                if previous_side_balance_row
-                else None
+                "Side Non-Engine %",
+                _format_percent((latest_side_balance_row or {}).get("average_non_engine_share_pct")),
+                _trend_delta_points(
+                    (latest_side_balance_row or {}).get("average_non_engine_share_pct"),
+                    (
+                        (previous_side_balance_row or {}).get("average_non_engine_share_pct")
+                        if previous_side_balance_row
+                        else None
+                    ),
+                ),
             ),
-        ),
-        delta_color="off",
-    )
-    metric_cols[3].metric(
-        "Main Handtrap %",
-        _format_percent((latest_main_role_row or {}).get("average_handtrap_share_pct")),
-        _trend_delta_points(
-            (latest_main_role_row or {}).get("average_handtrap_share_pct"),
             (
-                (previous_main_role_row or {}).get("average_handtrap_share_pct")
-                if previous_main_role_row
-                else None
+                "Main Handtrap %",
+                _format_percent((latest_main_role_row or {}).get("average_handtrap_share_pct")),
+                _trend_delta_points(
+                    (latest_main_role_row or {}).get("average_handtrap_share_pct"),
+                    (
+                        (previous_main_role_row or {}).get("average_handtrap_share_pct")
+                        if previous_main_role_row
+                        else None
+                    ),
+                ),
             ),
-        ),
-        delta_color="off",
-    )
-    metric_cols[4].metric(
-        "Side Boardbreaker %",
-        _format_percent(
-            (latest_side_role_row or {}).get("average_boardbreaker_share_pct")
-        ),
-        _trend_delta_points(
-            (latest_side_role_row or {}).get("average_boardbreaker_share_pct"),
             (
-                (previous_side_role_row or {}).get("average_boardbreaker_share_pct")
-                if previous_side_role_row
-                else None
+                "Side Boardbreaker %",
+                _format_percent((latest_side_role_row or {}).get("average_boardbreaker_share_pct")),
+                _trend_delta_points(
+                    (latest_side_role_row or {}).get("average_boardbreaker_share_pct"),
+                    (
+                        (previous_side_role_row or {}).get("average_boardbreaker_share_pct")
+                        if previous_side_role_row
+                        else None
+                    ),
+                ),
             ),
-        ),
-        delta_color="off",
-    )
-    metric_cols[5].metric(
-        "Protection in Weitere NE %",
-        _format_percent((latest_subrole_row or {}).get("average_protection_share_pct")),
-        _trend_delta_points(
-            (latest_subrole_row or {}).get("average_protection_share_pct"),
             (
-                (previous_subrole_row or {}).get("average_protection_share_pct")
-                if previous_subrole_row
-                else None
+                "Protection in Weitere NE %",
+                _format_percent((latest_subrole_row or {}).get("average_protection_share_pct")),
+                _trend_delta_points(
+                    (latest_subrole_row or {}).get("average_protection_share_pct"),
+                    (
+                        (previous_subrole_row or {}).get("average_protection_share_pct")
+                        if previous_subrole_row
+                        else None
+                    ),
+                ),
             ),
-        ),
-        delta_color="off",
+        ],
+        columns=3,
     )
 
 
@@ -1705,394 +1762,431 @@ def _render_monthly_trend_section(
         )
 
 
-st.set_page_config(page_title="Non-Engine Analyse", layout="wide")
-
-database_path = resolve_dashboard_db_path()
-repository = DashboardRepository(database_path)
-
-st.title("Non-Engine Analyse")
-
-status_message = repository.status_message()
-if status_message is not None:
-    st.warning(status_message)
-    st.stop()
-
-start_date, end_date = render_dashboard_date_filter(repository)
-
-global_non_engine_cards = repository.list_non_engine_cards(
-    classification="non_engine",
-    limit=500,
-    start_date=start_date,
-    end_date=end_date,
-)
-global_candidate_splash_cards = repository.list_non_engine_cards(
-    classification="candidate_splash",
-    limit=500,
-    start_date=start_date,
-    end_date=end_date,
-)
-monthly_main_share_rows = repository.get_monthly_main_deck_share_trends(
-    start_date=start_date, end_date=end_date
-)
-monthly_side_share_rows = repository.get_monthly_side_deck_share_trends(
-    start_date=start_date, end_date=end_date
-)
-monthly_subrole_rows = repository.get_monthly_non_engine_subrole_trends(
-    start_date=start_date, end_date=end_date
-)
-monthly_section_balance_rows = (
-    repository.get_monthly_section_engine_vs_non_engine_trends(
-        start_date=start_date,
-        end_date=end_date,
-    )
-)
-normalized_non_engine_rows = _normalize_global_rows(
-    global_non_engine_cards, "non_engine"
-)
-normalized_candidate_splash_rows = _normalize_global_rows(
-    global_candidate_splash_cards, "candidate_splash"
-)
-combined_rows = normalized_non_engine_rows + normalized_candidate_splash_rows
-
-st.markdown(
-    "Die Klassifikation kombiniert Verbreitungssignale mit Kartenmetadaten aus der YGOPRODeck-API. `Non-Engine` bedeutet breite Verteilung bei niedriger Gruppenkonzentration und geringem Archetype-Match zur Deckgruppe. `Candidate Splash` markiert wiederkehrende Pakete zwischen Engine und echter Staple."
-)
-
-st.caption(
-    "`Archetype Match %` zeigt, wie stark eine Karte in Deckgruppen auftaucht, deren Name den Karten-Archetype traegt. Hohe Werte sprechen eher fuer Engine als fuer generische Non-Engine."
-)
-
-st.info(
-    "`Ø Main / Deck` und `Ø Side / Deck` mitteln ueber alle aktuell gefilterten Decks, fehlende Vorkommen zaehlen also als 0. `Main >=1 %` und `Side >=1 %` zeigen den Anteil der Decks, in denen die Karte im jeweiligen Bereich mindestens einmal vorkommt. `Ø Kopien bei Nutzung` mittelt nur ueber Decks, die die Karte mindestens einmal in Main oder Side spielen."
-)
-
-st.caption(
-    "Die Unterrollen fuer echte Non-Engine-Karten werden heuristisch aus Kartentext, Typ, Frame-Typ und Main-vs-Side-Nutzung abgeleitet. Es gibt bewusst keine manuell gepflegte Karten-Namensliste."
-)
-
-_section_header(
-    "Uebersicht",
-    "Der Kopfbereich verdichtet den globalen Kartenpool in grobe Verbreitungs-, Konzentrations- und Kostenindikatoren.",
-)
-_render_overview_metrics(normalized_non_engine_rows, normalized_candidate_splash_rows)
-
-st.caption(
-    "`Main-first` und `Side-first` nutzen einen Abstand von mindestens 15 Prozentpunkten zwischen Main >=1 % und Side >=1 %. Dazwischen wird die Karte als `Hybrid` gelesen."
-)
-
-st.divider()
-
-_section_header(
-    "Candidate Splash Grenze",
-    "Diese Sicht macht den Uebergangsraum zwischen echter Staple und archetypenahem Paket sichtbar. Candidate Splash wird gegen den Non-Engine-Kontext in derselben Grenzlandkarte gespiegelt.",
-)
-_render_candidate_splash_summary(normalized_candidate_splash_rows)
-_render_candidate_splash_boundary_chart(
-    normalized_non_engine_rows, normalized_candidate_splash_rows
-)
-
-st.divider()
-
-_section_header(
-    "Karten-Explorer",
-    "Die folgenden Filter steuern Rollenmix, Scatterplots und Tabelle gemeinsam. So laesst sich der globale Pool als Staple-Landkarte statt als reine Rohliste lesen.",
-)
-
-pool_col, role_col, profile_col, confidence_col = st.columns(4)
-selected_pool = pool_col.radio(
-    "Kartenpool",
-    options=["Non-Engine", "Candidate Splash", "Beide"],
-    horizontal=True,
-)
-
-base_rows = combined_rows
-if selected_pool == "Non-Engine":
-    base_rows = normalized_non_engine_rows
-elif selected_pool == "Candidate Splash":
-    base_rows = normalized_candidate_splash_rows
-
-role_options = sorted({str(row["role_label"]) for row in base_rows})
-selected_roles = role_col.multiselect("Rollen", options=role_options)
-
-profile_options = [
-    profile
-    for profile in ["Main-first", "Side-first", "Hybrid", "-"]
-    if any(str(row["usage_profile_label"]) == profile for row in base_rows)
-]
-selected_profiles = profile_col.multiselect("Nutzungsprofil", options=profile_options)
-
-confidence_options = sorted({str(row["confidence_label"]) for row in base_rows})
-selected_confidences = confidence_col.multiselect(
-    "Sicherheit", options=confidence_options
-)
-
-slider_col_1, slider_col_2, slider_col_3, slider_col_4 = st.columns(4)
-min_inclusion_pct = slider_col_1.slider(
-    "Min Globale Inklusion %", min_value=0.0, max_value=100.0, value=0.0, step=1.0
-)
-min_spread_pct = slider_col_2.slider(
-    "Min Deckgruppen-Spread %", min_value=0.0, max_value=100.0, value=0.0, step=1.0
-)
-price_upper_bound = max(
-    1.0,
-    round(
-        max(
-            (
-                float(row.get("average_cardmarket_price_eur") or 0.0)
-                for row in base_rows
-            ),
-            default=0.0,
-        ),
-        2,
-    ),
-)
-price_step = 0.25 if price_upper_bound > 10.0 else 0.05
-selected_price_range = slider_col_3.slider(
-    "Ø Cardmarket €",
-    min_value=0.0,
-    max_value=float(price_upper_bound),
-    value=(0.0, float(price_upper_bound)),
-    step=float(price_step),
-)
-sort_mode = slider_col_4.selectbox(
-    "Sortierung",
-    options=[
-        "Globale Inklusion",
-        "Deckgruppen-Spread",
-        "Erwarteter Deckkostenbeitrag",
-        "Ø Cardmarket",
-        "Deckgruppen",
-        "Deckvorkommen",
-        "Karte",
-    ],
-    index=0,
-)
-
-filtered_rows = _filter_global_rows(
-    base_rows,
-    roles=selected_roles,
-    usage_profiles=selected_profiles,
-    confidence_levels=selected_confidences,
-    min_inclusion_pct=min_inclusion_pct,
-    min_spread_pct=min_spread_pct,
-    price_range=selected_price_range,
-)
-sorted_filtered_rows = _sort_global_rows(filtered_rows, sort_mode)
-
-filtered_metric_cols = st.columns(5)
-filtered_metric_cols[0].metric("Karten im Filter", len(sorted_filtered_rows))
-filtered_metric_cols[1].metric(
-    "Rollen im Filter", len({str(row["role_label"]) for row in sorted_filtered_rows})
-)
-filtered_metric_cols[2].metric(
-    "Median Inklusion",
-    _format_percent(_numeric_median(sorted_filtered_rows, "global_inclusion_rate_pct")),
-)
-filtered_metric_cols[3].metric(
-    "Median Spread",
-    _format_percent(_numeric_median(sorted_filtered_rows, "deck_group_spread_pct")),
-)
-filtered_metric_cols[4].metric(
-    "Median Deckkostenbeitrag",
-    _format_currency(
-        _numeric_median(sorted_filtered_rows, "expected_deck_cost_contribution_eur")
-    ),
-)
-
-st.caption(
-    f"Aktueller Pool: {selected_pool}. Nach Filtern bleiben {len(sorted_filtered_rows)} Karten uebrig. Die Visualisierungen lesen denselben Filterzustand wie die Tabelle."
-)
-
-chart_tab_1, chart_tab_2, chart_tab_3 = st.tabs(
-    ["Rollenmix", "Universell vs konzentriert", "Main vs Side"]
-)
-
-with chart_tab_1:
-    st.caption(
-        "Der Rollenmix zeigt, welche Unterklassen im aktuellen Filter dominieren und wie breit diese Rollen im Feld verteilt sind."
-    )
-    _render_role_mix_chart(sorted_filtered_rows)
-
-with chart_tab_2:
-    st.caption(
-        "Weit rechts und gleichzeitig tief liegende Punkte sind die universalsten Staples: hohe Deckgruppen-Breite bei niedriger Konzentration auf einzelne Deckgruppen."
-    )
-    _render_universal_vs_concentrated_scatter(sorted_filtered_rows)
-
-with chart_tab_3:
-    st.caption(
-        "Die Main-vs-Side-Landkarte trennt Main-Staples, Side-Bullets und Hybrid-Karten; die Punktgroesse approximiert den durchschnittlichen Cardmarket-Kostenbeitrag pro Deck."
-    )
-    _render_main_vs_side_scatter(sorted_filtered_rows)
-
-st.divider()
-
-_section_header(
-    "Performance-Layer",
-    "Diese Sicht verbindet card-level Verbreitung mit Resultatmetriken aus den beobachteten Listen derselben Karten. Sie folgt denselben Explorer-Filtern wie Charts und Tabelle.",
-)
-_render_performance_summary(sorted_filtered_rows)
-
-performance_tab_1, performance_tab_2, performance_tab_3 = st.tabs(
-    ["Inklusion vs Performance", "Kosten vs Performance", "Rollen-Benchmark"]
-)
-
-with performance_tab_1:
-    st.caption(
-        "Je weiter oben ein Punkt liegt, desto besser ist das typische Platzierungs-Perzentil der Listen mit dieser Karte. Die Farbe zeigt das Delta zum Feldmittel desselben Zeitraums."
-    )
-    _render_inclusion_vs_performance_scatter(sorted_filtered_rows)
-
-with performance_tab_2:
-    st.caption(
-        "Hier wird der erwartete Deckkostenbeitrag gegen den Median der beobachteten Resultate gelegt. Die Punktgroesse bleibt die globale Inklusion, damit teure Nischenkarten nicht wie Meta-Staples wirken."
-    )
-    _render_cost_vs_performance_scatter(sorted_filtered_rows)
-
-with performance_tab_3:
-    st.caption(
-        "Der Rollen-Benchmark verdichtet die card-level Performance in einen Rollenblick. Relevant ist vor allem das Median-Delta zum Feld, nicht nur das absolute Perzentil."
-    )
-    _render_role_performance_chart(sorted_filtered_rows)
-
-st.divider()
-
-_section_header(
-    "Karten-Drilldown",
-    "Fuer die aktuell gefilterten Karten lassen sich hier die Deckgruppen mit dem staerksten Uebergewicht und ein direkter Sprung auf die Deckgruppen-Details-Seite auswaehlen.",
-)
-
-if sorted_filtered_rows:
-    card_option_labels = [_card_drilldown_label(row) for row in sorted_filtered_rows]
-    card_rows_by_label = {
-        _card_drilldown_label(row): row for row in sorted_filtered_rows
+def _load_non_engine_page_data(
+    repository: DashboardRepository,
+    start_date: object,
+    end_date: object,
+) -> dict[str, object]:
+    page_bundle = load_non_engine_page_bundle(repository, start_date=start_date, end_date=end_date)
+    global_non_engine_cards = page_bundle["global_non_engine_cards"]
+    global_candidate_splash_cards = page_bundle["global_candidate_splash_cards"]
+    normalized_non_engine_rows = _normalize_global_rows(global_non_engine_cards, "non_engine")
+    normalized_candidate_splash_rows = _normalize_global_rows(global_candidate_splash_cards, "candidate_splash")
+    return {
+        "normalized_non_engine_rows": normalized_non_engine_rows,
+        "normalized_candidate_splash_rows": normalized_candidate_splash_rows,
+        "combined_rows": normalized_non_engine_rows + normalized_candidate_splash_rows,
+        "monthly_main_share_rows": page_bundle["monthly_main_share_rows"],
+        "monthly_side_share_rows": page_bundle["monthly_side_share_rows"],
+        "monthly_subrole_rows": page_bundle["monthly_subrole_rows"],
+        "monthly_section_balance_rows": page_bundle["monthly_section_balance_rows"],
     }
-    if st.session_state.get(CARD_DRILLDOWN_STATE_KEY) not in card_option_labels:
-        st.session_state[CARD_DRILLDOWN_STATE_KEY] = card_option_labels[0]
 
-    selected_card_label = st.selectbox(
-        "Karte fuer Gruppen-Drilldown",
-        options=card_option_labels,
-        key=CARD_DRILLDOWN_STATE_KEY,
+
+def _render_page_intro() -> None:
+    st.markdown(
+        "Die Klassifikation kombiniert Verbreitungssignale mit Kartenmetadaten aus der YGOPRODeck-API. `Non-Engine` bedeutet breite Verteilung bei niedriger Gruppenkonzentration und geringem Archetype-Match zur Deckgruppe. `Candidate Splash` markiert wiederkehrende Pakete zwischen Engine und echter Staple."
     )
-    selected_card_row = card_rows_by_label[selected_card_label]
-    card_group_rows = repository.list_deck_groups_for_non_engine_card(
-        str(selected_card_row["card_name"]),
-        classification=str(selected_card_row["classification_key"]),
-        limit=25,
-        start_date=start_date,
-        end_date=end_date,
+    st.caption(
+        "`Archetype Match %` zeigt, wie stark eine Karte in Deckgruppen auftaucht, deren Name den Karten-Archetype traegt. Hohe Werte sprechen eher fuer Engine als fuer generische Non-Engine."
+    )
+    st.info(
+        "`Ø Main / Deck` und `Ø Side / Deck` mitteln ueber alle aktuell gefilterten Decks, fehlende Vorkommen zaehlen also als 0. `Main >=1 %` und `Side >=1 %` zeigen den Anteil der Decks, in denen die Karte im jeweiligen Bereich mindestens einmal vorkommt. `Ø Kopien bei Nutzung` mittelt nur ueber Decks, die die Karte mindestens einmal in Main oder Side spielen."
+    )
+    st.caption(
+        "Die Unterrollen fuer echte Non-Engine-Karten werden heuristisch aus Kartentext, Typ, Frame-Typ und Main-vs-Side-Nutzung abgeleitet. Es gibt bewusst keine manuell gepflegte Karten-Namensliste."
     )
 
-    if card_group_rows:
-        top_inclusion_row = max(
-            card_group_rows,
-            key=lambda row: (
-                float(row.get("group_inclusion_rate_pct") or 0.0),
-                str(row["deck_name"]),
-            ),
-        )
-        top_share_row = max(
-            card_group_rows,
-            key=lambda row: (
-                float(row.get("card_group_share_pct") or 0.0),
-                str(row["deck_name"]),
-            ),
-        )
-        best_group_row = max(
-            card_group_rows,
-            key=lambda row: (
-                float(row.get("median_placement_percentile") or 0.0),
-                str(row["deck_name"]),
-            ),
-        )
 
-        drilldown_metric_cols = st.columns(4)
-        drilldown_metric_cols[0].metric("Deckgruppen mit Karte", len(card_group_rows))
-        drilldown_metric_cols[1].metric(
-            "Hoechste Gruppen-Inklusion",
-            str(top_inclusion_row.get("deck_name") or "-"),
-            _format_percent(top_inclusion_row.get("group_inclusion_rate_pct")),
-            delta_color="off",
-        )
-        drilldown_metric_cols[2].metric(
-            "Groesster Karten-Share",
-            str(top_share_row.get("deck_name") or "-"),
-            _format_percent(top_share_row.get("card_group_share_pct")),
-            delta_color="off",
-        )
-        drilldown_metric_cols[3].metric(
-            "Bestes Gruppen-Median",
-            str(best_group_row.get("deck_name") or "-"),
-            _format_percent(best_group_row.get("median_placement_percentile")),
-            delta_color="off",
-        )
+def _render_overview_section(
+    normalized_non_engine_rows: list[dict[str, object]],
+    normalized_candidate_splash_rows: list[dict[str, object]],
+) -> None:
+    _section_header(
+        "Uebersicht",
+        "Der Kopfbereich verdichtet den globalen Kartenpool in grobe Verbreitungs-, Konzentrations- und Kostenindikatoren.",
+    )
+    _render_overview_metrics(normalized_non_engine_rows, normalized_candidate_splash_rows)
+    st.caption(
+        "`Main-first` und `Side-first` nutzen einen Abstand von mindestens 15 Prozentpunkten zwischen Main >=1 % und Side >=1 %. Dazwischen wird die Karte als `Hybrid` gelesen."
+    )
 
-        group_option_names = [str(row["deck_name"]) for row in card_group_rows]
-        if (
-            st.session_state.get(CARD_GROUP_DRILLDOWN_STATE_KEY)
-            not in group_option_names
-        ):
-            st.session_state[CARD_GROUP_DRILLDOWN_STATE_KEY] = group_option_names[0]
 
-        drilldown_col_1, drilldown_col_2 = st.columns((3, 1))
-        selected_group_name = drilldown_col_1.selectbox(
-            "Deckgruppe fuer Details",
-            options=group_option_names,
-            format_func=lambda deck_name: _deck_group_drilldown_label(
-                next(
-                    row
-                    for row in card_group_rows
-                    if str(row["deck_name"]) == str(deck_name)
-                )
-            ),
-            key=CARD_GROUP_DRILLDOWN_STATE_KEY,
-        )
-        if drilldown_col_2.button("Zu Deckgruppen-Details"):
-            _open_deck_group(str(selected_group_name))
+def _render_candidate_splash_section(
+    normalized_non_engine_rows: list[dict[str, object]],
+    normalized_candidate_splash_rows: list[dict[str, object]],
+) -> None:
+    st.divider()
+    _section_header(
+        "Candidate Splash Grenze",
+        "Diese Sicht macht den Uebergangsraum zwischen echter Staple und archetypenahem Paket sichtbar. Candidate Splash wird gegen den Non-Engine-Kontext in derselben Grenzlandkarte gespiegelt.",
+    )
+    _render_candidate_splash_summary(normalized_candidate_splash_rows)
+    _render_candidate_splash_boundary_chart(
+        normalized_non_engine_rows,
+        normalized_candidate_splash_rows,
+    )
 
+
+def _render_explorer_section(
+    combined_rows: list[dict[str, object]],
+    normalized_non_engine_rows: list[dict[str, object]],
+    normalized_candidate_splash_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    st.divider()
+    _section_header(
+        "Karten-Explorer",
+        "Die folgenden Filter steuern Rollenmix, Scatterplots und Tabelle gemeinsam. So laesst sich der globale Pool als Staple-Landkarte statt als reine Rohliste lesen.",
+    )
+
+    with st.container(border=True):
+        st.markdown("**Filter und Sortierung**")
         st.caption(
-            f"Die Gruppenliste fuer {selected_card_row['card_name']} ist auf die aktuell gewaehlte Klassifikation und den aktiven Datumsfilter begrenzt. `Karten-Share` misst, welcher Anteil der beobachteten Decks mit dieser Karte auf die jeweilige Deckgruppe entfaellt."
+            "Pool, Rollen, Schwellenwerte und Sortierung steuern Rollenmix, Scatterplots und Tabelle gemeinsam."
         )
-        st.dataframe(
-            [
-                {
-                    "Deckgruppe": row["deck_name"],
-                    "Kartendecks in Gruppe": row["decks_with_card"],
-                    "Gruppengroesse": row["deck_group_size"],
-                    "Karten-Share %": row["card_group_share_pct"],
-                    "Gruppen-Inklusion %": row["group_inclusion_rate_pct"],
-                    "Main >=1 %": row["main_presence_pct"],
-                    "Side >=1 %": row["side_presence_pct"],
-                    "Ø Kopien bei Nutzung": row["average_copies_when_present"],
-                    "Median Platzierungs-Perzentil": row["median_placement_percentile"],
-                    "Top-25 %": row["top_25_finish_rate_pct"],
-                    "Performance-IQR": row["placement_percentile_iqr"],
-                }
-                for row in card_group_rows
-            ],
-            hide_index=True,
-            width="stretch",
+
+        control_col_1, control_col_2 = st.columns((1.15, 1))
+
+        with control_col_1.container(border=True):
+            st.markdown("**Pool und Nutzung**")
+            pool_col, role_col = st.columns(2)
+            profile_col, confidence_col = st.columns(2)
+            selected_pool = pool_col.radio(
+                "Kartenpool",
+                options=["Non-Engine", "Candidate Splash", "Beide"],
+                horizontal=True,
+            )
+
+        base_rows = combined_rows
+        if selected_pool == "Non-Engine":
+            base_rows = normalized_non_engine_rows
+        elif selected_pool == "Candidate Splash":
+            base_rows = normalized_candidate_splash_rows
+
+        role_options = sorted({str(row["role_label"]) for row in base_rows})
+        selected_roles = role_col.multiselect("Rollen", options=role_options)
+        profile_options = [
+            profile
+            for profile in ["Main-first", "Side-first", "Hybrid", "-"]
+            if any(str(row["usage_profile_label"]) == profile for row in base_rows)
+        ]
+        selected_profiles = profile_col.multiselect("Nutzungsprofil", options=profile_options)
+        confidence_options = sorted({str(row["confidence_label"]) for row in base_rows})
+        selected_confidences = confidence_col.multiselect("Sicherheit", options=confidence_options)
+
+        with control_col_2.container(border=True):
+            st.markdown("**Schwellen und Sortierung**")
+            slider_col_1, slider_col_2 = st.columns(2)
+            slider_col_3, slider_col_4 = st.columns(2)
+            min_inclusion_pct = slider_col_1.slider(
+                "Min Globale Inklusion %", min_value=0.0, max_value=100.0, value=0.0, step=1.0
+            )
+            min_spread_pct = slider_col_2.slider(
+                "Min Deckgruppen-Spread %", min_value=0.0, max_value=100.0, value=0.0, step=1.0
+            )
+            price_upper_bound = max(
+                1.0,
+                round(
+                    max(
+                        (float(row.get("average_cardmarket_price_eur") or 0.0) for row in base_rows),
+                        default=0.0,
+                    ),
+                    2,
+                ),
+            )
+            price_step = 0.25 if price_upper_bound > 10.0 else 0.05
+            selected_price_range = slider_col_3.slider(
+                "Ø Cardmarket €",
+                min_value=0.0,
+                max_value=float(price_upper_bound),
+                value=(0.0, float(price_upper_bound)),
+                step=float(price_step),
+            )
+            sort_mode = slider_col_4.selectbox(
+                "Sortierung",
+                options=[
+                    "Globale Inklusion",
+                    "Deckgruppen-Spread",
+                    "Erwarteter Deckkostenbeitrag",
+                    "Ø Cardmarket",
+                    "Deckgruppen",
+                    "Deckvorkommen",
+                    "Karte",
+                ],
+                index=0,
+            )
+
+    filtered_rows = _filter_global_rows(
+        base_rows,
+        roles=selected_roles,
+        usage_profiles=selected_profiles,
+        confidence_levels=selected_confidences,
+        min_inclusion_pct=min_inclusion_pct,
+        min_spread_pct=min_spread_pct,
+        price_range=selected_price_range,
+    )
+    sorted_filtered_rows = _sort_global_rows(filtered_rows, sort_mode)
+
+    _render_metric_group(
+        st.container(),
+        "Filterstatus",
+        [
+            ("Karten im Filter", _format_count(len(sorted_filtered_rows)), None),
+            (
+                "Rollen im Filter",
+                _format_count(len({str(row["role_label"]) for row in sorted_filtered_rows})),
+                None,
+            ),
+            (
+                "Median Inklusion",
+                _format_percent(_numeric_median(sorted_filtered_rows, "global_inclusion_rate_pct")),
+                None,
+            ),
+            (
+                "Median Spread",
+                _format_percent(_numeric_median(sorted_filtered_rows, "deck_group_spread_pct")),
+                None,
+            ),
+            (
+                "Median Deckkostenbeitrag",
+                _format_currency(_numeric_median(sorted_filtered_rows, "expected_deck_cost_contribution_eur")),
+                None,
+            ),
+        ],
+        columns=3,
+    )
+
+    st.caption(
+        f"Aktueller Pool: {selected_pool}. Nach Filtern bleiben {len(sorted_filtered_rows)} Karten uebrig. Die Visualisierungen lesen denselben Filterzustand wie die Tabelle."
+    )
+
+    chart_tab_1, chart_tab_2, chart_tab_3 = st.tabs(["Rollenmix", "Universell vs konzentriert", "Main vs Side"])
+    with chart_tab_1:
+        st.caption(
+            "Der Rollenmix zeigt, welche Unterklassen im aktuellen Filter dominieren und wie breit diese Rollen im Feld verteilt sind."
         )
+        _render_role_mix_chart(sorted_filtered_rows)
+
+    with chart_tab_2:
+        st.caption(
+            "Weit rechts und gleichzeitig tief liegende Punkte sind die universalsten Staples: hohe Deckgruppen-Breite bei niedriger Konzentration auf einzelne Deckgruppen."
+        )
+        _render_universal_vs_concentrated_scatter(sorted_filtered_rows)
+
+    with chart_tab_3:
+        st.caption(
+            "Die Main-vs-Side-Landkarte trennt Main-Staples, Side-Bullets und Hybrid-Karten; die Punktgroesse approximiert den durchschnittlichen Cardmarket-Kostenbeitrag pro Deck."
+        )
+        _render_main_vs_side_scatter(sorted_filtered_rows)
+
+    return sorted_filtered_rows
+
+
+def _render_performance_section(sorted_filtered_rows: list[dict[str, object]]) -> None:
+    st.divider()
+    _section_header(
+        "Performance-Layer",
+        "Diese Sicht verbindet card-level Verbreitung mit Resultatmetriken aus den beobachteten Listen derselben Karten. Sie folgt denselben Explorer-Filtern wie Charts und Tabelle.",
+    )
+    _render_performance_summary(sorted_filtered_rows)
+
+    performance_tab_1, performance_tab_2, performance_tab_3 = st.tabs(
+        ["Inklusion vs Performance", "Kosten vs Performance", "Rollen-Benchmark"]
+    )
+    with performance_tab_1:
+        st.caption(
+            "Je weiter oben ein Punkt liegt, desto besser ist das typische Platzierungs-Perzentil der Listen mit dieser Karte. Die Farbe zeigt das Delta zum Feldmittel desselben Zeitraums."
+        )
+        _render_inclusion_vs_performance_scatter(sorted_filtered_rows)
+
+    with performance_tab_2:
+        st.caption(
+            "Hier wird der erwartete Deckkostenbeitrag gegen den Median der beobachteten Resultate gelegt. Die Punktgroesse bleibt die globale Inklusion, damit teure Nischenkarten nicht wie Meta-Staples wirken."
+        )
+        _render_cost_vs_performance_scatter(sorted_filtered_rows)
+
+    with performance_tab_3:
+        st.caption(
+            "Der Rollen-Benchmark verdichtet die card-level Performance in einen Rollenblick. Relevant ist vor allem das Median-Delta zum Feld, nicht nur das absolute Perzentil."
+        )
+        _render_role_performance_chart(sorted_filtered_rows)
+
+
+def _render_drilldown_section(
+    repository: DashboardRepository,
+    sorted_filtered_rows: list[dict[str, object]],
+    start_date: object,
+    end_date: object,
+) -> None:
+    st.divider()
+    _section_header(
+        "Karten-Drilldown",
+        "Fuer die aktuell gefilterten Karten lassen sich hier die Deckgruppen mit dem staerksten Uebergewicht und ein direkter Sprung auf die Deckgruppen-Details-Seite auswaehlen.",
+    )
+
+    if sorted_filtered_rows:
+        card_option_labels = [_card_drilldown_label(row) for row in sorted_filtered_rows]
+        card_rows_by_label = {_card_drilldown_label(row): row for row in sorted_filtered_rows}
+        if st.session_state.get(CARD_DRILLDOWN_STATE_KEY) not in card_option_labels:
+            st.session_state[CARD_DRILLDOWN_STATE_KEY] = card_option_labels[0]
+
+        with st.container(border=True):
+            st.markdown("**Kartenauswahl**")
+            selected_card_label = st.selectbox(
+                "Karte fuer Gruppen-Drilldown",
+                options=card_option_labels,
+                key=CARD_DRILLDOWN_STATE_KEY,
+            )
+        selected_card_row = card_rows_by_label[selected_card_label]
+        card_group_rows = repository.list_deck_groups_for_non_engine_card(
+            str(selected_card_row["card_name"]),
+            classification=str(selected_card_row["classification_key"]),
+            limit=25,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        if card_group_rows:
+            top_inclusion_row = max(
+                card_group_rows,
+                key=lambda row: (float(row.get("group_inclusion_rate_pct") or 0.0), str(row["deck_name"])),
+            )
+            top_share_row = max(
+                card_group_rows,
+                key=lambda row: (float(row.get("card_group_share_pct") or 0.0), str(row["deck_name"])),
+            )
+            best_group_row = max(
+                card_group_rows,
+                key=lambda row: (float(row.get("median_placement_percentile") or 0.0), str(row["deck_name"])),
+            )
+
+            drilldown_summary_col_1, drilldown_summary_col_2 = st.columns(2)
+            _render_metric_group(
+                drilldown_summary_col_1,
+                "Gruppenreichweite",
+                [
+                    ("Deckgruppen mit Karte", _format_count(len(card_group_rows)), None),
+                    (
+                        "Hoechste Gruppen-Inklusion",
+                        str(top_inclusion_row.get("deck_name") or "-"),
+                        _format_percent(top_inclusion_row.get("group_inclusion_rate_pct")),
+                    ),
+                ],
+                columns=1,
+            )
+            _render_metric_group(
+                drilldown_summary_col_2,
+                "Leitgruppen",
+                [
+                    (
+                        "Groesster Karten-Share",
+                        str(top_share_row.get("deck_name") or "-"),
+                        _format_percent(top_share_row.get("card_group_share_pct")),
+                    ),
+                    (
+                        "Bestes Gruppen-Median",
+                        str(best_group_row.get("deck_name") or "-"),
+                        _format_percent(best_group_row.get("median_placement_percentile")),
+                    ),
+                ],
+                columns=1,
+            )
+
+            group_option_names = [str(row["deck_name"]) for row in card_group_rows]
+            if st.session_state.get(CARD_GROUP_DRILLDOWN_STATE_KEY) not in group_option_names:
+                st.session_state[CARD_GROUP_DRILLDOWN_STATE_KEY] = group_option_names[0]
+
+            with st.container(border=True):
+                st.markdown("**Deckgruppen-Details**")
+                selected_group_name = st.selectbox(
+                    "Deckgruppe fuer Details",
+                    options=group_option_names,
+                    format_func=lambda deck_name: _deck_group_drilldown_label(
+                        next(row for row in card_group_rows if str(row["deck_name"]) == str(deck_name))
+                    ),
+                    key=CARD_GROUP_DRILLDOWN_STATE_KEY,
+                )
+                if st.button("Zu Deckgruppen-Details"):
+                    _open_deck_group(str(selected_group_name))
+
+            st.caption(
+                f"Die Gruppenliste fuer {selected_card_row['card_name']} ist auf die aktuell gewaehlte Klassifikation und den aktiven Datumsfilter begrenzt. `Karten-Share` misst, welcher Anteil der beobachteten Decks mit dieser Karte auf die jeweilige Deckgruppe entfaellt."
+            )
+            st.dataframe(
+                [
+                    {
+                        "Deckgruppe": row["deck_name"],
+                        "Kartendecks in Gruppe": row["decks_with_card"],
+                        "Gruppengroesse": row["deck_group_size"],
+                        "Karten-Share %": row["card_group_share_pct"],
+                        "Gruppen-Inklusion %": row["group_inclusion_rate_pct"],
+                        "Main >=1 %": row["main_presence_pct"],
+                        "Side >=1 %": row["side_presence_pct"],
+                        "Ø Kopien bei Nutzung": row["average_copies_when_present"],
+                        "Median Platzierungs-Perzentil": row["median_placement_percentile"],
+                        "Top-25 %": row["top_25_finish_rate_pct"],
+                        "Performance-IQR": row["placement_percentile_iqr"],
+                    }
+                    for row in card_group_rows
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+        else:
+            st.info(
+                "Fuer die ausgewaehlte Karte konnten im aktiven Zeitraum keine Deckgruppen-Drilldown-Daten berechnet werden."
+            )
     else:
-        st.info(
-            "Fuer die ausgewaehlte Karte konnten im aktiven Zeitraum keine Deckgruppen-Drilldown-Daten berechnet werden."
-        )
-else:
-    st.info("Der aktuelle Filter liefert keine Karten fuer einen Drilldown.")
+        st.info("Der aktuelle Filter liefert keine Karten fuer einen Drilldown.")
 
-st.markdown("**Kartenliste**")
-_render_global_table(sorted_filtered_rows, "Der aktuelle Filter liefert keine Karten.")
+    st.markdown("**Kartenliste**")
+    _render_global_table(sorted_filtered_rows, "Der aktuelle Filter liefert keine Karten.")
 
-st.divider()
 
-_section_header(
-    "Monatlicher Trend",
-    "Diese Sektion folgt nur dem globalen Datumsfilter und zeigt, wie sich Non-Engine-Anteile und Unterrollen ueber die Monate verschieben.",
-)
-_render_monthly_trend_section(
-    monthly_section_balance_rows,
-    monthly_main_share_rows,
-    monthly_side_share_rows,
-    monthly_subrole_rows,
-)
+def main() -> None:
+    st.set_page_config(page_title="Non-Engine Analyse", layout="wide")
+
+    database_path = resolve_dashboard_db_path()
+    repository = DashboardRepository(database_path)
+
+    st.title("Non-Engine Analyse")
+
+    status_message = repository.status_message()
+    if status_message is not None:
+        st.warning(status_message)
+        st.stop()
+
+    start_date, end_date = render_dashboard_date_filter(repository)
+    page_data = _load_non_engine_page_data(repository, start_date, end_date)
+
+    _render_page_intro()
+    _render_overview_section(
+        page_data["normalized_non_engine_rows"],
+        page_data["normalized_candidate_splash_rows"],
+    )
+    _render_candidate_splash_section(
+        page_data["normalized_non_engine_rows"],
+        page_data["normalized_candidate_splash_rows"],
+    )
+    sorted_filtered_rows = _render_explorer_section(
+        page_data["combined_rows"],
+        page_data["normalized_non_engine_rows"],
+        page_data["normalized_candidate_splash_rows"],
+    )
+    _render_performance_section(sorted_filtered_rows)
+    _render_drilldown_section(repository, sorted_filtered_rows, start_date, end_date)
+
+    st.divider()
+    _section_header(
+        "Monatlicher Trend",
+        "Diese Sektion folgt nur dem globalen Datumsfilter und zeigt, wie sich Non-Engine-Anteile und Unterrollen ueber die Monate verschieben.",
+    )
+    _render_monthly_trend_section(
+        page_data["monthly_section_balance_rows"],
+        page_data["monthly_main_share_rows"],
+        page_data["monthly_side_share_rows"],
+        page_data["monthly_subrole_rows"],
+    )
+
+
+main()

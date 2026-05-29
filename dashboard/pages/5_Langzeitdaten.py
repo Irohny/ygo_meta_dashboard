@@ -2,8 +2,42 @@ from __future__ import annotations
 
 import streamlit as st
 
+from ygo_crawler.dashboard_cache import load_longterm_page_data
 from ygo_crawler.dashboard_filters import render_dashboard_date_filter
 from ygo_crawler.dashboard_queries import DashboardRepository, resolve_dashboard_db_path
+
+
+def _render_metric(
+    column: st.delta_generator.DeltaGenerator,
+    label: str,
+    value: str,
+    delta: str | None = None,
+) -> None:
+    if delta is None:
+        column.metric(label, value, border=True)
+        return
+    column.metric(label, value, delta=delta, delta_color="off", border=True)
+
+
+def _render_metric_group(
+    column: st.delta_generator.DeltaGenerator,
+    title: str,
+    metrics: list[tuple[str, str, str | None]],
+    *,
+    columns: int,
+    description: str | None = None,
+) -> None:
+    with column.container(border=True):
+        st.markdown(f"**{title}**")
+        if description:
+            st.caption(description)
+
+        for offset in range(0, len(metrics), columns):
+            metric_columns = st.columns(columns)
+            for metric_column, (label, value, delta) in zip(
+                metric_columns, metrics[offset : offset + columns]
+            ):
+                _render_metric(metric_column, label, value, delta)
 
 
 def _render_time_series_chart(
@@ -348,209 +382,257 @@ def _render_monthly_top_deck_cost_chart(rows: list[dict[str, object]]) -> None:
     )
 
 
-st.set_page_config(page_title="Langzeitdaten", layout="wide")
+def _load_longterm_page_data(
+    repository: DashboardRepository,
+    start_date: object,
+    end_date: object,
+) -> dict[str, object]:
+    return load_longterm_page_data(repository, start_date=start_date, end_date=end_date)
 
-database_path = resolve_dashboard_db_path()
-repository = DashboardRepository(database_path)
 
-st.title("Langzeitdaten")
-
-status_message = repository.status_message()
-if status_message is not None:
-    st.warning(status_message)
-    st.stop()
-
-start_date, end_date = render_dashboard_date_filter(repository)
-
-trend_rows = repository.get_monthly_main_deck_share_trends(start_date=start_date, end_date=end_date)
-side_trend_rows = repository.get_monthly_side_deck_share_trends(start_date=start_date, end_date=end_date)
-subrole_trend_rows = repository.get_monthly_non_engine_subrole_trends(start_date=start_date, end_date=end_date)
-section_trend_rows = repository.get_monthly_section_engine_vs_non_engine_trends(start_date=start_date, end_date=end_date)
-new_deck_name_rows = repository.get_monthly_new_deck_name_share_trends(start_date=start_date, end_date=end_date)
-concentration_rows = repository.get_monthly_deck_result_concentration_trends(start_date=start_date, end_date=end_date)
-top_deck_cost_rows = repository.get_monthly_top_deck_cost_trends(start_date=start_date, end_date=end_date)
-if not trend_rows:
-    st.warning("Fuer den ausgewaehlten Zeitraum liegen keine Monatsaggregate vor.")
-    st.stop()
-
-st.markdown(
-    "Die Seite aggregiert monatlich ueber alle aktuell gefilterten Decks und kombiniert Deckzusammensetzung, Formatdiversitaet, Metawechsel und Kostenentwicklung. `Engine` umfasst Hauptengine und restliche Engine. `Handtraps`, `Boardbreaker` und die weiteren Unterrollen nutzen dieselbe heuristische Non-Engine-Unterklassifikation wie die anderen Dashboard-Seiten."
-)
-st.caption(
-    "Je nach Plot beziehen sich die Prozentwerte auf das Main Deck, das Side Deck, alle Monatsergebnisse oder auf den Bucket `Weitere Non-Engine`. Die Beschriftung unter jedem Chart nennt die jeweilige Bezugsbasis."
-)
-
-latest_new_share = None
-if new_deck_name_rows and new_deck_name_rows[-1]["new_result_share_pct"] is not None:
-    latest_new_share = float(new_deck_name_rows[-1]["new_result_share_pct"])
-
-summary_col_1, summary_col_2, summary_col_3, summary_col_4 = st.columns(4)
-summary_col_1.metric("Monate", len(trend_rows))
-summary_col_2.metric("Neuester Monat", str(trend_rows[-1]["month_start"])[:7])
-summary_col_3.metric("Decks im neuesten Monat", int(trend_rows[-1]["deck_count"]))
-summary_col_4.metric("Neue Decknamen im neuesten Monat", f"{latest_new_share:.2f}%" if latest_new_share is not None else "-")
-
-st.subheader("Monatlicher Main-Deck-Anteil")
-st.caption(
-    "Die Linien zeigen monatlich gemittelte Anteile im Main Deck ueber alle aktuell gefilterten Decks. `Engine` umfasst Hauptengine und restliche Engine."
-)
-_render_monthly_share_chart(trend_rows)
-
-with st.expander("Monatswerte anzeigen"):
-    st.dataframe(
-        [
-            {
-                "Monat": str(row["month_start"])[:7],
-                "Decks": int(row["deck_count"]),
-                "Ø Engine %": float(row["average_engine_share_pct"]),
-                "Ø Handtraps %": float(row["average_handtrap_share_pct"]),
-                "Ø Boardbreaker %": float(row["average_boardbreaker_share_pct"]),
-            }
-            for row in trend_rows
-        ],
-        hide_index=True,
-        width="stretch",
+def _render_page_intro(trend_rows: list[dict[str, object]], new_deck_name_rows: list[dict[str, object]]) -> None:
+    st.markdown(
+        "Die Seite aggregiert monatlich ueber alle aktuell gefilterten Decks und kombiniert Deckzusammensetzung, Formatdiversitaet, Metawechsel und Kostenentwicklung. `Engine` umfasst Hauptengine und restliche Engine. `Handtraps`, `Boardbreaker` und die weiteren Unterrollen nutzen dieselbe heuristische Non-Engine-Unterklassifikation wie die anderen Dashboard-Seiten."
+    )
+    st.caption(
+        "Je nach Plot beziehen sich die Prozentwerte auf das Main Deck, das Side Deck, alle Monatsergebnisse oder auf den Bucket `Weitere Non-Engine`. Die Beschriftung unter jedem Chart nennt die jeweilige Bezugsbasis."
     )
 
-st.subheader("Engine vs Non-Engine nach Deckbereich")
-st.caption(
-    "Hier werden fuer Main Deck und Side Deck getrennt die mittleren Monatsanteile von Engine und echter Non-Engine gezeigt."
-)
-main_col, side_col = st.columns(2)
-with main_col:
-    st.markdown("**Main Deck**")
-    _render_section_engine_vs_non_engine_chart(section_trend_rows, "main")
-with side_col:
-    st.markdown("**Side Deck**")
-    _render_section_engine_vs_non_engine_chart(section_trend_rows, "side")
+    latest_new_share = None
+    if new_deck_name_rows and new_deck_name_rows[-1]["new_result_share_pct"] is not None:
+        latest_new_share = float(new_deck_name_rows[-1]["new_result_share_pct"])
 
-with st.expander("Engine-vs-Non-Engine-Werte anzeigen"):
-    st.dataframe(
+    _render_metric_group(
+        st.container(),
+        "Zeitfenster und Formatpulse",
         [
-            {
-                "Monat": str(row["month_start"])[:7],
-                "Deckbereich": "Main Deck" if row["section"] == "main" else "Side Deck",
-                "Decks": int(row["deck_count"]),
-                "Ø Engine %": float(row["average_engine_share_pct"]),
-                "Ø Non-Engine %": float(row["average_non_engine_share_pct"]),
-            }
-            for row in section_trend_rows
+            ("Monate", str(len(trend_rows)), None),
+            ("Neuester Monat", str(trend_rows[-1]["month_start"])[:7], None),
+            ("Decks im neuesten Monat", str(int(trend_rows[-1]["deck_count"])), None),
+            (
+                "Neue Decknamen im neuesten Monat",
+                f"{latest_new_share:.2f}%" if latest_new_share is not None else "-",
+                None,
+            ),
         ],
-        hide_index=True,
-        width="stretch",
+        columns=2,
+        description="Die Kennzahlen fassen den aktuell gefilterten Monatsverlauf in einem kompakten Kopfblock zusammen.",
     )
 
-st.subheader("Monatlicher Side-Deck-Anteil")
-st.caption(
-    "Dieser Plot zeigt, wie sich Handtraps, Boardbreaker und `Weitere Non-Engine` im Side Deck ueber die Zeit verschieben."
-)
-_render_monthly_side_share_chart(side_trend_rows)
 
-with st.expander("Side-Deck-Werte anzeigen"):
-    st.dataframe(
-        [
-            {
-                "Monat": str(row["month_start"])[:7],
-                "Decks": int(row["deck_count"]),
-                "Ø Handtraps %": float(row["average_handtrap_share_pct"]),
-                "Ø Boardbreaker %": float(row["average_boardbreaker_share_pct"]),
-                "Ø Weitere Non-Engine %": float(row["average_non_engine_other_share_pct"]),
-            }
-            for row in side_trend_rows
-        ],
-        hide_index=True,
-        width="stretch",
-    )
+def _render_main_share_section(trend_rows: list[dict[str, object]]) -> None:
+    with st.container(border=True):
+        st.subheader("Monatlicher Main-Deck-Anteil")
+        st.caption(
+            "Die Linien zeigen monatlich gemittelte Anteile im Main Deck ueber alle aktuell gefilterten Decks. `Engine` umfasst Hauptengine und restliche Engine."
+        )
+        _render_monthly_share_chart(trend_rows)
 
-st.subheader("Unterrollen innerhalb von Weitere Non-Engine")
-st.caption(
-    "Die Linien zeigen, wie sich Floodgates, Protection und Draw Engine innerhalb des Buckets `Weitere Non-Engine` ueber Main und Side zusammen entwickeln. Unklare Faelle bleiben im Tabellen-Expander sichtbar."
-)
-_render_monthly_non_engine_subrole_chart(subrole_trend_rows)
+        with st.expander("Monatswerte anzeigen"):
+            st.dataframe(
+                [
+                    {
+                        "Monat": str(row["month_start"])[:7],
+                        "Decks": int(row["deck_count"]),
+                        "Ø Engine %": float(row["average_engine_share_pct"]),
+                        "Ø Handtraps %": float(row["average_handtrap_share_pct"]),
+                        "Ø Boardbreaker %": float(row["average_boardbreaker_share_pct"]),
+                    }
+                    for row in trend_rows
+                ],
+                hide_index=True,
+                width="stretch",
+            )
 
-with st.expander("Unterrollenwerte anzeigen"):
-    st.dataframe(
-        [
-            {
-                "Monat": str(row["month_start"])[:7],
-                "Decks": int(row["deck_count"]),
-                "Ø Floodgates %": float(row["average_floodgate_share_pct"]),
-                "Ø Protection %": float(row["average_protection_share_pct"]),
-                "Ø Draw Engine %": float(row["average_draw_engine_share_pct"]),
-                "Ø Unklar %": float(row["average_unknown_share_pct"]),
-            }
-            for row in subrole_trend_rows
-        ],
-        hide_index=True,
-        width="stretch",
-    )
 
-st.subheader("Anteil neuer Decknamen pro Monat")
-st.caption(
-    "Gezeigt wird der Anteil der Monatsergebnisse, die von Decknamen stammen, die im direkt vorherigen verfuegbaren Monat noch nicht vorkamen. Der erste Monat bleibt ohne Vergleichspunkt leer."
-)
-_render_monthly_new_deck_name_share_chart(new_deck_name_rows)
+def _render_section_balance_section(section_trend_rows: list[dict[str, object]]) -> None:
+    with st.container(border=True):
+        st.subheader("Engine vs Non-Engine nach Deckbereich")
+        st.caption(
+            "Hier werden fuer Main Deck und Side Deck getrennt die mittleren Monatsanteile von Engine und echter Non-Engine gezeigt."
+        )
+        main_col, side_col = st.columns(2)
+        with main_col.container(border=True):
+            st.markdown("**Main Deck**")
+            _render_section_engine_vs_non_engine_chart(section_trend_rows, "main")
+        with side_col.container(border=True):
+            st.markdown("**Side Deck**")
+            _render_section_engine_vs_non_engine_chart(section_trend_rows, "side")
 
-with st.expander("Neue-Decknamen-Werte anzeigen"):
-    st.dataframe(
-        [
-            {
-                "Monat": str(row["month_start"])[:7],
-                "Ergebnisse": int(row["result_count"]),
-                "Distinct Decknamen": int(row["distinct_deck_names"]),
-                "Neue Decknamen": row["new_deck_name_count"],
-                "Neue Ergebnisse": row["new_result_count"],
-                "Neue Ergebnisanteile %": row["new_result_share_pct"],
-            }
-            for row in new_deck_name_rows
-        ],
-        hide_index=True,
-        width="stretch",
-    )
+        with st.expander("Engine-vs-Non-Engine-Werte anzeigen"):
+            st.dataframe(
+                [
+                    {
+                        "Monat": str(row["month_start"])[:7],
+                        "Deckbereich": "Main Deck" if row["section"] == "main" else "Side Deck",
+                        "Decks": int(row["deck_count"]),
+                        "Ø Engine %": float(row["average_engine_share_pct"]),
+                        "Ø Non-Engine %": float(row["average_non_engine_share_pct"]),
+                    }
+                    for row in section_trend_rows
+                ],
+                hide_index=True,
+                width="stretch",
+            )
 
-st.subheader("Formatdiversitaet nach Ergebnisabdeckung")
-st.caption(
-    "Die Linien zeigen, wie viele unterschiedliche Decknamen in einem Monat noetig sind, um zusammen 25 %, 50 %, 75 % oder 90 % aller gespeicherten Turnierergebnisse abzudecken. Niedrigere Werte sprechen fuer ein konzentrierteres, hoehere Werte fuer ein diverseres Format."
-)
-_render_monthly_concentration_chart(concentration_rows)
 
-with st.expander("Diversitaetswerte anzeigen"):
-    st.dataframe(
-        [
-            {
-                "Monat": str(row["month_start"])[:7],
-                "Ergebnisse": int(row["result_count"]),
-                "Distinct Decknamen": int(row["distinct_deck_names"]),
-                "Decknamen fuer 25 %": int(row["deck_names_for_25_pct"]),
-                "Decknamen fuer 50 %": int(row["deck_names_for_50_pct"]),
-                "Decknamen fuer 75 %": int(row["deck_names_for_75_pct"]),
-                "Decknamen fuer 90 %": int(row["deck_names_for_90_pct"]),
-            }
-            for row in concentration_rows
-        ],
-        hide_index=True,
-        width="stretch",
-    )
+def _render_side_share_section(side_trend_rows: list[dict[str, object]]) -> None:
+    with st.container(border=True):
+        st.subheader("Monatlicher Side-Deck-Anteil")
+        st.caption(
+            "Dieser Plot zeigt, wie sich Handtraps, Boardbreaker und `Weitere Non-Engine` im Side Deck ueber die Zeit verschieben."
+        )
+        _render_monthly_side_share_chart(side_trend_rows)
 
-st.subheader("Kosten der Top-Decks ueber Zeit")
-st.caption(
-    "Die Top-10-Decknamen werden je Monat nach Ergebnisanteil bestimmt. Der Plot zeigt ihre mittlere Cardmarket-Summe einmal ungewichtet und einmal ergebnisgewichtet."
-)
-_render_monthly_top_deck_cost_chart(top_deck_cost_rows)
+        with st.expander("Side-Deck-Werte anzeigen"):
+            st.dataframe(
+                [
+                    {
+                        "Monat": str(row["month_start"])[:7],
+                        "Decks": int(row["deck_count"]),
+                        "Ø Handtraps %": float(row["average_handtrap_share_pct"]),
+                        "Ø Boardbreaker %": float(row["average_boardbreaker_share_pct"]),
+                        "Ø Weitere Non-Engine %": float(row["average_non_engine_other_share_pct"]),
+                    }
+                    for row in side_trend_rows
+                ],
+                hide_index=True,
+                width="stretch",
+            )
 
-with st.expander("Top-Deck-Kosten anzeigen"):
-    st.dataframe(
-        [
-            {
-                "Monat": str(row["month_start"])[:7],
-                "Ergebnisse": int(row["result_count"]),
-                "Top-10 Decknamen": int(row["top_10_deck_name_count"]),
-                "Top-10 Ergebnisanteil %": float(row["top_10_result_share_pct"]),
-                "Ø Top 10 ungewichtet €": float(row["average_top_10_cardmarket_price_eur"]),
-                "Ø Top 10 ergebnisgewichtet €": float(row["weighted_average_top_10_cardmarket_price_eur"]),
-            }
-            for row in top_deck_cost_rows
-        ],
-        hide_index=True,
-        width="stretch",
-    )
+
+def _render_subrole_section(subrole_trend_rows: list[dict[str, object]]) -> None:
+    with st.container(border=True):
+        st.subheader("Unterrollen innerhalb von Weitere Non-Engine")
+        st.caption(
+            "Die Linien zeigen, wie sich Floodgates, Protection und Draw Engine innerhalb des Buckets `Weitere Non-Engine` ueber Main und Side zusammen entwickeln. Unklare Faelle bleiben im Tabellen-Expander sichtbar."
+        )
+        _render_monthly_non_engine_subrole_chart(subrole_trend_rows)
+
+        with st.expander("Unterrollenwerte anzeigen"):
+            st.dataframe(
+                [
+                    {
+                        "Monat": str(row["month_start"])[:7],
+                        "Decks": int(row["deck_count"]),
+                        "Ø Floodgates %": float(row["average_floodgate_share_pct"]),
+                        "Ø Protection %": float(row["average_protection_share_pct"]),
+                        "Ø Draw Engine %": float(row["average_draw_engine_share_pct"]),
+                        "Ø Unklar %": float(row["average_unknown_share_pct"]),
+                    }
+                    for row in subrole_trend_rows
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+
+
+def _render_new_deck_name_section(new_deck_name_rows: list[dict[str, object]]) -> None:
+    with st.container(border=True):
+        st.subheader("Anteil neuer Decknamen pro Monat")
+        st.caption(
+            "Gezeigt wird der Anteil der Monatsergebnisse, die von Decknamen stammen, die im direkt vorherigen verfuegbaren Monat noch nicht vorkamen. Der erste Monat bleibt ohne Vergleichspunkt leer."
+        )
+        _render_monthly_new_deck_name_share_chart(new_deck_name_rows)
+
+        with st.expander("Neue-Decknamen-Werte anzeigen"):
+            st.dataframe(
+                [
+                    {
+                        "Monat": str(row["month_start"])[:7],
+                        "Ergebnisse": int(row["result_count"]),
+                        "Distinct Decknamen": int(row["distinct_deck_names"]),
+                        "Neue Decknamen": row["new_deck_name_count"],
+                        "Neue Ergebnisse": row["new_result_count"],
+                        "Neue Ergebnisanteile %": row["new_result_share_pct"],
+                    }
+                    for row in new_deck_name_rows
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+
+
+def _render_concentration_section(concentration_rows: list[dict[str, object]]) -> None:
+    with st.container(border=True):
+        st.subheader("Formatdiversitaet nach Ergebnisabdeckung")
+        st.caption(
+            "Die Linien zeigen, wie viele unterschiedliche Decknamen in einem Monat noetig sind, um zusammen 25 %, 50 %, 75 % oder 90 % aller gespeicherten Turnierergebnisse abzudecken. Niedrigere Werte sprechen fuer ein konzentrierteres, hoehere Werte fuer ein diverseres Format."
+        )
+        _render_monthly_concentration_chart(concentration_rows)
+
+        with st.expander("Diversitaetswerte anzeigen"):
+            st.dataframe(
+                [
+                    {
+                        "Monat": str(row["month_start"])[:7],
+                        "Ergebnisse": int(row["result_count"]),
+                        "Distinct Decknamen": int(row["distinct_deck_names"]),
+                        "Decknamen fuer 25 %": int(row["deck_names_for_25_pct"]),
+                        "Decknamen fuer 50 %": int(row["deck_names_for_50_pct"]),
+                        "Decknamen fuer 75 %": int(row["deck_names_for_75_pct"]),
+                        "Decknamen fuer 90 %": int(row["deck_names_for_90_pct"]),
+                    }
+                    for row in concentration_rows
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+
+
+def _render_top_deck_cost_section(top_deck_cost_rows: list[dict[str, object]]) -> None:
+    with st.container(border=True):
+        st.subheader("Kosten der Top-Decks ueber Zeit")
+        st.caption(
+            "Die Top-10-Decknamen werden je Monat nach Ergebnisanteil bestimmt. Der Plot zeigt ihre mittlere Cardmarket-Summe einmal ungewichtet und einmal ergebnisgewichtet."
+        )
+        _render_monthly_top_deck_cost_chart(top_deck_cost_rows)
+
+        with st.expander("Top-Deck-Kosten anzeigen"):
+            st.dataframe(
+                [
+                    {
+                        "Monat": str(row["month_start"])[:7],
+                        "Ergebnisse": int(row["result_count"]),
+                        "Top-10 Decknamen": int(row["top_10_deck_name_count"]),
+                        "Top-10 Ergebnisanteil %": float(row["top_10_result_share_pct"]),
+                        "Ø Top 10 ungewichtet €": float(row["average_top_10_cardmarket_price_eur"]),
+                        "Ø Top 10 ergebnisgewichtet €": float(row["weighted_average_top_10_cardmarket_price_eur"]),
+                    }
+                    for row in top_deck_cost_rows
+                ],
+                hide_index=True,
+                width="stretch",
+            )
+
+
+def main() -> None:
+    st.set_page_config(page_title="Langzeitdaten", layout="wide")
+
+    database_path = resolve_dashboard_db_path()
+    repository = DashboardRepository(database_path)
+
+    st.title("Langzeitdaten")
+
+    status_message = repository.status_message()
+    if status_message is not None:
+        st.warning(status_message)
+        st.stop()
+
+    start_date, end_date = render_dashboard_date_filter(repository)
+    page_data = _load_longterm_page_data(repository, start_date, end_date)
+    if not page_data["trend_rows"]:
+        st.warning("Fuer den ausgewaehlten Zeitraum liegen keine Monatsaggregate vor.")
+        st.stop()
+
+    _render_page_intro(page_data["trend_rows"], page_data["new_deck_name_rows"])
+    _render_main_share_section(page_data["trend_rows"])
+    _render_section_balance_section(page_data["section_trend_rows"])
+    _render_side_share_section(page_data["side_trend_rows"])
+    _render_subrole_section(page_data["subrole_trend_rows"])
+    _render_new_deck_name_section(page_data["new_deck_name_rows"])
+    _render_concentration_section(page_data["concentration_rows"])
+    _render_top_deck_cost_section(page_data["top_deck_cost_rows"])
+
+
+main()
