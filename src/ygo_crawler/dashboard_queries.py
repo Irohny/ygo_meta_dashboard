@@ -47,14 +47,12 @@ class DashboardRepository:
             return f"Die Datenbank {self.database_path} existiert noch nicht. Starte zuerst einen Crawl."
 
         try:
-            row = self._fetch_one(
-                """
+            row = self._fetch_one("""
                 SELECT name
                 FROM sqlite_master
                 WHERE type = 'view'
                   AND name = 'dashboard_deck_summary_v'
-                """
-            )
+                """)
         except sqlite3.Error as exc:
             return f"Die Datenbank konnte nicht gelesen werden: {exc}"
 
@@ -63,34 +61,35 @@ class DashboardRepository:
         return None
 
     def get_available_date_range(self) -> tuple[date, date] | None:
-        row = self._fetch_one(
-            """
+        row = self._fetch_one("""
             SELECT
                 MIN(t.tournament_date) AS min_date,
                 MAX(t.tournament_date) AS max_date
             FROM decks d
             JOIN tournaments t ON t.tournament_site_id = d.tournament_site_id
-            """
-        )
+            """)
         if row is None or row["min_date"] is None or row["max_date"] is None:
-            row = self._fetch_one(
-                """
+            row = self._fetch_one("""
                 SELECT
                     MIN(tournament_date) AS min_date,
                     MAX(tournament_date) AS max_date
                 FROM tournaments
-                """
-            )
+                """)
         if row is None or row["min_date"] is None or row["max_date"] is None:
             return None
-        return (date.fromisoformat(str(row["min_date"])), date.fromisoformat(str(row["max_date"])))
+        return (
+            date.fromisoformat(str(row["min_date"])),
+            date.fromisoformat(str(row["max_date"])),
+        )
 
     def get_kpis(
         self,
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> DashboardKpis:
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         row = self._fetch_one(
             f"""
             WITH {cte_sql}
@@ -167,7 +166,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         rows = self._fetch_all(
             f"""
             WITH {cte_sql}
@@ -200,7 +201,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> dict[str, Any] | None:
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         row = self._fetch_one(
             f"""
             WITH {cte_sql}
@@ -240,13 +243,25 @@ class DashboardRepository:
         if summary is None:
             return None
 
-        participants_count = int(summary["participants_count"]) if summary.get("participants_count") is not None else 0
-        placement_sort_value = (
-            int(summary["placement_sort_value"]) if summary.get("placement_sort_value") is not None else None
+        participants_count = (
+            int(summary["participants_count"])
+            if summary.get("participants_count") is not None
+            else 0
         )
-        if participants_count > 0 and placement_sort_value is not None and placement_sort_value > 0:
+        placement_sort_value = (
+            int(summary["placement_sort_value"])
+            if summary.get("placement_sort_value") is not None
+            else None
+        )
+        if (
+            participants_count > 0
+            and placement_sort_value is not None
+            and placement_sort_value > 0
+        ):
             placement_percentile = round(
-                (participants_count - placement_sort_value + 1) * 100.0 / participants_count,
+                (participants_count - placement_sort_value + 1)
+                * 100.0
+                / participants_count,
                 1,
             )
         else:
@@ -267,7 +282,9 @@ class DashboardRepository:
             return None
 
         analyses = self._build_deck_analysis_totals(
-            self._get_deck_analysis_card_rows(deck_site_id=deck_site_id, start_date=start_date, end_date=end_date)
+            self._get_deck_analysis_card_rows(
+                deck_site_id=deck_site_id, start_date=start_date, end_date=end_date
+            )
         )
         analysis = analyses.get(deck_site_id)
         if analysis is None:
@@ -278,19 +295,34 @@ class DashboardRepository:
             deck_name=str(summary["deck_name"]),
             analysis=analysis,
         )
-        benchmarks = self.get_deck_group_role_benchmarks(str(summary["deck_name"]), start_date, end_date)
+        benchmarks = self.get_deck_group_role_benchmarks(
+            str(summary["deck_name"]), start_date, end_date
+        )
         if benchmarks is not None:
             metrics.update(
                 {
                     "group_deck_count": int(benchmarks["deck_count"]),
-                    "group_average_main_engine_share_pct": benchmarks["average_main_engine_share_pct"],
-                    "group_average_main_non_engine_share_pct": benchmarks["average_main_non_engine_share_pct"],
-                    "group_average_side_non_engine_share_pct": benchmarks["average_side_non_engine_share_pct"],
-                    "group_average_side_handtrap_share_pct": benchmarks["average_side_handtrap_share_pct"],
-                    "group_average_side_boardbreaker_share_pct": benchmarks["average_side_boardbreaker_share_pct"],
-                    "group_average_side_non_engine_other_share_pct": benchmarks["average_side_non_engine_other_share_pct"],
+                    "group_average_main_engine_share_pct": benchmarks[
+                        "average_main_engine_share_pct"
+                    ],
+                    "group_average_main_non_engine_share_pct": benchmarks[
+                        "average_main_non_engine_share_pct"
+                    ],
+                    "group_average_side_non_engine_share_pct": benchmarks[
+                        "average_side_non_engine_share_pct"
+                    ],
+                    "group_average_side_handtrap_share_pct": benchmarks[
+                        "average_side_handtrap_share_pct"
+                    ],
+                    "group_average_side_boardbreaker_share_pct": benchmarks[
+                        "average_side_boardbreaker_share_pct"
+                    ],
+                    "group_average_side_non_engine_other_share_pct": benchmarks[
+                        "average_side_non_engine_other_share_pct"
+                    ],
                     "delta_vs_group_main_engine_share_pct": round(
-                        float(metrics["main_engine_share_pct"]) - float(benchmarks["average_main_engine_share_pct"]),
+                        float(metrics["main_engine_share_pct"])
+                        - float(benchmarks["average_main_engine_share_pct"]),
                         2,
                     ),
                     "delta_vs_group_main_non_engine_share_pct": round(
@@ -329,7 +361,9 @@ class DashboardRepository:
         end_date: date | str | None = None,
     ) -> dict[str, Any] | None:
         analyses = self._build_deck_analysis_totals(
-            self._get_deck_analysis_card_rows(deck_name=deck_name, start_date=start_date, end_date=end_date)
+            self._get_deck_analysis_card_rows(
+                deck_name=deck_name, start_date=start_date, end_date=end_date
+            )
         )
         if not analyses:
             return None
@@ -360,11 +394,21 @@ class DashboardRepository:
         return {
             "deck_name": deck_name,
             "deck_count": deck_count,
-            "average_main_engine_share_pct": round(totals["main_engine_share_pct"] / deck_count, 2),
-            "average_main_non_engine_share_pct": round(totals["main_non_engine_share_pct"] / deck_count, 2),
-            "average_side_non_engine_share_pct": round(totals["side_non_engine_share_pct"] / deck_count, 2),
-            "average_side_handtrap_share_pct": round(totals["side_handtrap_share_pct"] / deck_count, 2),
-            "average_side_boardbreaker_share_pct": round(totals["side_boardbreaker_share_pct"] / deck_count, 2),
+            "average_main_engine_share_pct": round(
+                totals["main_engine_share_pct"] / deck_count, 2
+            ),
+            "average_main_non_engine_share_pct": round(
+                totals["main_non_engine_share_pct"] / deck_count, 2
+            ),
+            "average_side_non_engine_share_pct": round(
+                totals["side_non_engine_share_pct"] / deck_count, 2
+            ),
+            "average_side_handtrap_share_pct": round(
+                totals["side_handtrap_share_pct"] / deck_count, 2
+            ),
+            "average_side_boardbreaker_share_pct": round(
+                totals["side_boardbreaker_share_pct"] / deck_count, 2
+            ),
             "average_side_non_engine_other_share_pct": round(
                 totals["side_non_engine_other_share_pct"] / deck_count,
                 2,
@@ -381,8 +425,12 @@ class DashboardRepository:
         if summary is None:
             return []
 
-        deck_rows = self.get_deck_section_composition(deck_site_id, start_date, end_date)
-        group_rows = self.get_deck_group_section_composition(str(summary["deck_name"]), start_date, end_date)
+        deck_rows = self.get_deck_section_composition(
+            deck_site_id, start_date, end_date
+        )
+        group_rows = self.get_deck_group_section_composition(
+            str(summary["deck_name"]), start_date, end_date
+        )
         comparison_rows: list[dict[str, Any]] = []
 
         for row in deck_rows:
@@ -442,33 +490,62 @@ class DashboardRepository:
             {
                 "component_name": "Engine",
                 "component_type": "main_engine",
-                "cardmarket_cost_eur": round(float(metrics["engine_cardmarket_cost_eur"]), 2),
-                "share_pct": round(float(metrics["engine_cardmarket_cost_eur"]) * 100.0 / total_cost, 2),
+                "cardmarket_cost_eur": round(
+                    float(metrics["engine_cardmarket_cost_eur"]), 2
+                ),
+                "share_pct": round(
+                    float(metrics["engine_cardmarket_cost_eur"]) * 100.0 / total_cost, 2
+                ),
                 "type_rank": 1,
             },
             {
                 "component_name": "Handtraps",
                 "component_type": "non_engine_handtrap",
-                "cardmarket_cost_eur": round(float(metrics["handtrap_cardmarket_cost_eur"]), 2),
-                "share_pct": round(float(metrics["handtrap_cardmarket_cost_eur"]) * 100.0 / total_cost, 2),
+                "cardmarket_cost_eur": round(
+                    float(metrics["handtrap_cardmarket_cost_eur"]), 2
+                ),
+                "share_pct": round(
+                    float(metrics["handtrap_cardmarket_cost_eur"]) * 100.0 / total_cost,
+                    2,
+                ),
                 "type_rank": 2,
             },
             {
                 "component_name": "Boardbreaker",
                 "component_type": "non_engine_boardbreaker",
-                "cardmarket_cost_eur": round(float(metrics["boardbreaker_cardmarket_cost_eur"]), 2),
-                "share_pct": round(float(metrics["boardbreaker_cardmarket_cost_eur"]) * 100.0 / total_cost, 2),
+                "cardmarket_cost_eur": round(
+                    float(metrics["boardbreaker_cardmarket_cost_eur"]), 2
+                ),
+                "share_pct": round(
+                    float(metrics["boardbreaker_cardmarket_cost_eur"])
+                    * 100.0
+                    / total_cost,
+                    2,
+                ),
                 "type_rank": 3,
             },
             {
                 "component_name": "Weitere Non-Engine",
                 "component_type": "non_engine_other",
-                "cardmarket_cost_eur": round(float(metrics["non_engine_other_cardmarket_cost_eur"]), 2),
-                "share_pct": round(float(metrics["non_engine_other_cardmarket_cost_eur"]) * 100.0 / total_cost, 2),
+                "cardmarket_cost_eur": round(
+                    float(metrics["non_engine_other_cardmarket_cost_eur"]), 2
+                ),
+                "share_pct": round(
+                    float(metrics["non_engine_other_cardmarket_cost_eur"])
+                    * 100.0
+                    / total_cost,
+                    2,
+                ),
                 "type_rank": 4,
             },
         ]
-        rows.sort(key=lambda row: (int(row["type_rank"]), -float(row["share_pct"]), str(row["component_name"])))
+        rows.sort(
+            key=lambda row: (
+                int(row["type_rank"]),
+                -float(row["share_pct"]),
+                str(row["component_name"]),
+            )
+        )
         return rows
 
     def get_deck_copy_count_histogram(
@@ -482,13 +559,29 @@ class DashboardRepository:
             return []
 
         histogram_rows = [
-            {"copy_count": 1, "label": "1x", "card_count": int(metrics["main_one_of_count"])},
-            {"copy_count": 2, "label": "2x", "card_count": int(metrics["main_two_of_count"])},
-            {"copy_count": 3, "label": "3x", "card_count": int(metrics["main_three_of_count"])},
+            {
+                "copy_count": 1,
+                "label": "1x",
+                "card_count": int(metrics["main_one_of_count"]),
+            },
+            {
+                "copy_count": 2,
+                "label": "2x",
+                "card_count": int(metrics["main_two_of_count"]),
+            },
+            {
+                "copy_count": 3,
+                "label": "3x",
+                "card_count": int(metrics["main_three_of_count"]),
+            },
         ]
         total_distinct_main_cards = sum(row["card_count"] for row in histogram_rows)
         for row in histogram_rows:
-            row["share_pct"] = round(row["card_count"] * 100.0 / total_distinct_main_cards, 2) if total_distinct_main_cards > 0 else 0.0
+            row["share_pct"] = (
+                round(row["card_count"] * 100.0 / total_distinct_main_cards, 2)
+                if total_distinct_main_cards > 0
+                else 0.0
+            )
         return histogram_rows
 
     def list_deck_name_aggregates(
@@ -497,7 +590,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        rows = self._fetch_deck_name_aggregate_base_rows(limit=limit, start_date=start_date, end_date=end_date)
+        rows = self._fetch_deck_name_aggregate_base_rows(
+            limit=limit, start_date=start_date, end_date=end_date
+        )
         return self._attach_deck_name_aggregate_enrichments(
             rows,
             start_date=start_date,
@@ -510,7 +605,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        return self.list_deck_name_aggregates(limit=limit, start_date=start_date, end_date=end_date)
+        return self.list_deck_name_aggregates(
+            limit=limit, start_date=start_date, end_date=end_date
+        )
 
     def get_deck_name_aggregate(
         self,
@@ -537,7 +634,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> dict[str, Any] | None:
-        return self.get_deck_name_aggregate(deck_name, start_date=start_date, end_date=end_date)
+        return self.get_deck_name_aggregate(
+            deck_name, start_date=start_date, end_date=end_date
+        )
 
     def get_deck_name_scatter_rows(
         self,
@@ -547,7 +646,9 @@ class DashboardRepository:
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
         aggregate_rows = self._attach_deck_name_aggregate_enrichments(
-            self._fetch_deck_name_aggregate_base_rows(start_date=start_date, end_date=end_date),
+            self._fetch_deck_name_aggregate_base_rows(
+                start_date=start_date, end_date=end_date
+            ),
             start_date=start_date,
             end_date=end_date,
         )
@@ -558,7 +659,10 @@ class DashboardRepository:
                 continue
             average_placement_percentile = row.get("average_placement_percentile")
             median_placement_percentile = row.get("median_placement_percentile")
-            if average_placement_percentile is None and median_placement_percentile is None:
+            if (
+                average_placement_percentile is None
+                and median_placement_percentile is None
+            ):
                 continue
             scatter_rows.append(
                 {
@@ -567,32 +671,52 @@ class DashboardRepository:
                     "tournament_count": int(row.get("tournament_count") or 0),
                     "player_count": int(row.get("player_count") or 0),
                     "meta_share_pct": float(row.get("meta_share_pct") or 0.0),
-                    "tournament_coverage_pct": float(row.get("tournament_coverage_pct") or 0.0),
-                    "player_diversity_ratio": float(row.get("player_diversity_ratio") or 0.0),
-                    "average_placement_percentile": float(average_placement_percentile)
-                    if average_placement_percentile is not None
-                    else None,
-                    "median_placement_percentile": float(median_placement_percentile)
-                    if median_placement_percentile is not None
-                    else None,
-                    "top_25_finish_rate_pct": float(row.get("top_25_finish_rate_pct"))
-                    if row.get("top_25_finish_rate_pct") is not None
-                    else None,
-                    "average_cardmarket_deck_price_eur": float(row.get("average_cardmarket_deck_price_eur"))
-                    if row.get("average_cardmarket_deck_price_eur") is not None
-                    else None,
-                    "median_cardmarket_deck_price_eur": float(row.get("median_cardmarket_deck_price_eur"))
-                    if row.get("median_cardmarket_deck_price_eur") is not None
-                    else None,
-                    "recent_30d_result_share_pct": float(row.get("recent_30d_result_share_pct"))
-                    if row.get("recent_30d_result_share_pct") is not None
-                    else None,
+                    "tournament_coverage_pct": float(
+                        row.get("tournament_coverage_pct") or 0.0
+                    ),
+                    "player_diversity_ratio": float(
+                        row.get("player_diversity_ratio") or 0.0
+                    ),
+                    "average_placement_percentile": (
+                        float(average_placement_percentile)
+                        if average_placement_percentile is not None
+                        else None
+                    ),
+                    "median_placement_percentile": (
+                        float(median_placement_percentile)
+                        if median_placement_percentile is not None
+                        else None
+                    ),
+                    "top_25_finish_rate_pct": (
+                        float(row.get("top_25_finish_rate_pct"))
+                        if row.get("top_25_finish_rate_pct") is not None
+                        else None
+                    ),
+                    "average_cardmarket_deck_price_eur": (
+                        float(row.get("average_cardmarket_deck_price_eur"))
+                        if row.get("average_cardmarket_deck_price_eur") is not None
+                        else None
+                    ),
+                    "median_cardmarket_deck_price_eur": (
+                        float(row.get("median_cardmarket_deck_price_eur"))
+                        if row.get("median_cardmarket_deck_price_eur") is not None
+                        else None
+                    ),
+                    "recent_30d_result_share_pct": (
+                        float(row.get("recent_30d_result_share_pct"))
+                        if row.get("recent_30d_result_share_pct") is not None
+                        else None
+                    ),
                 }
             )
         scatter_rows.sort(
             key=lambda row: (
                 -float(row["meta_share_pct"]),
-                -(float(row["average_placement_percentile"]) if row["average_placement_percentile"] is not None else 0.0),
+                -(
+                    float(row["average_placement_percentile"])
+                    if row["average_placement_percentile"] is not None
+                    else 0.0
+                ),
                 str(row["deck_name"]),
             )
         )
@@ -614,17 +738,29 @@ class DashboardRepository:
         cost_rows = [
             {
                 **row,
-                "median_cardmarket_deck_price_eur": row["median_cardmarket_deck_price_eur"],
-                "cardmarket_deck_price_p25_eur": row.get("cardmarket_deck_price_p25_eur"),
-                "cardmarket_deck_price_p75_eur": row.get("cardmarket_deck_price_p75_eur"),
+                "median_cardmarket_deck_price_eur": row[
+                    "median_cardmarket_deck_price_eur"
+                ],
+                "cardmarket_deck_price_p25_eur": row.get(
+                    "cardmarket_deck_price_p25_eur"
+                ),
+                "cardmarket_deck_price_p75_eur": row.get(
+                    "cardmarket_deck_price_p75_eur"
+                ),
             }
-            for row in self._attach_cost_distribution_fields(rows, start_date=start_date, end_date=end_date)
+            for row in self._attach_cost_distribution_fields(
+                rows, start_date=start_date, end_date=end_date
+            )
             if row.get("median_cardmarket_deck_price_eur") is not None
         ]
         cost_rows.sort(
             key=lambda row: (
                 float(row["median_cardmarket_deck_price_eur"]),
-                -(float(row["average_placement_percentile"]) if row["average_placement_percentile"] is not None else 0.0),
+                -(
+                    float(row["average_placement_percentile"])
+                    if row["average_placement_percentile"] is not None
+                    else 0.0
+                ),
                 str(row["deck_name"]),
             )
         )
@@ -640,7 +776,9 @@ class DashboardRepository:
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
         aggregate_rows = self._attach_deck_name_aggregate_enrichments(
-            self._fetch_deck_name_aggregate_base_rows(start_date=start_date, end_date=end_date),
+            self._fetch_deck_name_aggregate_base_rows(
+                start_date=start_date, end_date=end_date
+            ),
             start_date=start_date,
             end_date=end_date,
         )
@@ -653,8 +791,14 @@ class DashboardRepository:
                 "average_placement_percentile",
                 "median_cardmarket_deck_price_eur",
             }
-            effective_sort_field = sort_field if sort_field in sortable_fields else "meta_share_pct"
-            candidate_rows = [row for row in aggregate_rows if int(row.get("deck_count") or 0) >= min_deck_count]
+            effective_sort_field = (
+                sort_field if sort_field in sortable_fields else "meta_share_pct"
+            )
+            candidate_rows = [
+                row
+                for row in aggregate_rows
+                if int(row.get("deck_count") or 0) >= min_deck_count
+            ]
             candidate_rows.sort(
                 key=lambda row: (
                     -float(row.get(effective_sort_field) or 0.0),
@@ -662,16 +806,22 @@ class DashboardRepository:
                     str(row["deck_name"]),
                 )
             )
-            selected_deck_names = [str(row["deck_name"]) for row in candidate_rows[:limit]]
+            selected_deck_names = [
+                str(row["deck_name"]) for row in candidate_rows[:limit]
+            ]
         else:
-            selected_deck_names = [deck_name for deck_name in deck_names if deck_name in aggregate_by_name]
+            selected_deck_names = [
+                deck_name for deck_name in deck_names if deck_name in aggregate_by_name
+            ]
 
         profile_rows: list[dict[str, Any]] = []
         for deck_rank, deck_name in enumerate(selected_deck_names, start=1):
             aggregate_row = aggregate_by_name.get(deck_name)
             if aggregate_row is None:
                 continue
-            for row in self.get_deck_group_section_composition(deck_name, start_date, end_date):
+            for row in self.get_deck_group_section_composition(
+                deck_name, start_date, end_date
+            ):
                 profile_rows.append(
                     {
                         "deck_name": deck_name,
@@ -679,17 +829,27 @@ class DashboardRepository:
                         "section": row["section"],
                         "component_name": row["component_name"],
                         "component_type": row["component_type"],
-                        "average_copies_per_group_deck": float(row["average_copies_per_group_deck"]),
+                        "average_copies_per_group_deck": float(
+                            row["average_copies_per_group_deck"]
+                        ),
                         "share_pct": float(row["share_pct"]),
                         "type_rank": int(row["type_rank"]),
                         "deck_count": int(aggregate_row.get("deck_count") or 0),
-                        "meta_share_pct": float(aggregate_row.get("meta_share_pct") or 0.0),
-                        "average_placement_percentile": float(aggregate_row.get("average_placement_percentile"))
-                        if aggregate_row.get("average_placement_percentile") is not None
-                        else None,
-                        "median_cardmarket_deck_price_eur": float(aggregate_row.get("median_cardmarket_deck_price_eur"))
-                        if aggregate_row.get("median_cardmarket_deck_price_eur") is not None
-                        else None,
+                        "meta_share_pct": float(
+                            aggregate_row.get("meta_share_pct") or 0.0
+                        ),
+                        "average_placement_percentile": (
+                            float(aggregate_row.get("average_placement_percentile"))
+                            if aggregate_row.get("average_placement_percentile")
+                            is not None
+                            else None
+                        ),
+                        "median_cardmarket_deck_price_eur": (
+                            float(aggregate_row.get("median_cardmarket_deck_price_eur"))
+                            if aggregate_row.get("median_cardmarket_deck_price_eur")
+                            is not None
+                            else None
+                        ),
                     }
                 )
         return profile_rows
@@ -704,7 +864,9 @@ class DashboardRepository:
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
         aggregate_rows = self._attach_deck_name_aggregate_enrichments(
-            self._fetch_deck_name_aggregate_base_rows(start_date=start_date, end_date=end_date),
+            self._fetch_deck_name_aggregate_base_rows(
+                start_date=start_date, end_date=end_date
+            ),
             start_date=start_date,
             end_date=end_date,
         )
@@ -717,8 +879,14 @@ class DashboardRepository:
                 "average_placement_percentile",
                 "median_cardmarket_deck_price_eur",
             }
-            effective_sort_field = sort_field if sort_field in sortable_fields else "meta_share_pct"
-            candidate_rows = [row for row in aggregate_rows if int(row.get("deck_count") or 0) >= min_deck_count]
+            effective_sort_field = (
+                sort_field if sort_field in sortable_fields else "meta_share_pct"
+            )
+            candidate_rows = [
+                row
+                for row in aggregate_rows
+                if int(row.get("deck_count") or 0) >= min_deck_count
+            ]
             candidate_rows.sort(
                 key=lambda row: (
                     -float(row.get(effective_sort_field) or 0.0),
@@ -726,15 +894,21 @@ class DashboardRepository:
                     str(row["deck_name"]),
                 )
             )
-            selected_deck_names = [str(row["deck_name"]) for row in candidate_rows[:limit]]
+            selected_deck_names = [
+                str(row["deck_name"]) for row in candidate_rows[:limit]
+            ]
         else:
-            selected_deck_names = [deck_name for deck_name in deck_names if deck_name in aggregate_by_name]
+            selected_deck_names = [
+                deck_name for deck_name in deck_names if deck_name in aggregate_by_name
+            ]
 
         if not selected_deck_names:
             return []
 
         placeholders = ", ".join("?" for _ in selected_deck_names)
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
 
         monthly_total_rows = self._fetch_all(
             f"""
@@ -798,13 +972,18 @@ class DashboardRepository:
                 if cardmarket_deck_price_eur > 0:
                     stats["known_prices"].append(cardmarket_deck_price_eur)
 
-        deck_rank_by_name = {deck_name: index for index, deck_name in enumerate(selected_deck_names, start=1)}
+        deck_rank_by_name = {
+            deck_name: index
+            for index, deck_name in enumerate(selected_deck_names, start=1)
+        }
         trend_rows: list[dict[str, Any]] = []
         for (deck_name, month_start), stats in sorted(
             trend_stats.items(),
             key=lambda item: (deck_rank_by_name.get(item[0][0], 9_999), item[0][1]),
         ):
-            placement_percentiles = sorted(float(value) for value in stats["placement_percentiles"])
+            placement_percentiles = sorted(
+                float(value) for value in stats["placement_percentiles"]
+            )
             known_prices = sorted(float(value) for value in stats["known_prices"])
             placement_p25 = self._interpolated_quantile(placement_percentiles, 0.25)
             placement_p50 = self._interpolated_quantile(placement_percentiles, 0.50)
@@ -822,26 +1001,40 @@ class DashboardRepository:
                     "month_start": month_start,
                     "deck_count": deck_count,
                     "month_total_deck_count": month_total_deck_count,
-                    "meta_share_pct": round(deck_count * 100.0 / month_total_deck_count, 2)
-                    if month_total_deck_count > 0
-                    else None,
-                    "average_placement_percentile": round(sum(placement_percentiles) / len(placement_percentiles), 2)
-                    if placement_percentiles
-                    else None,
+                    "meta_share_pct": (
+                        round(deck_count * 100.0 / month_total_deck_count, 2)
+                        if month_total_deck_count > 0
+                        else None
+                    ),
+                    "average_placement_percentile": (
+                        round(
+                            sum(placement_percentiles) / len(placement_percentiles), 2
+                        )
+                        if placement_percentiles
+                        else None
+                    ),
                     "median_placement_percentile": placement_p50,
-                    "placement_percentile_iqr": round(placement_p75 - placement_p25, 2)
-                    if placement_p25 is not None and placement_p75 is not None
-                    else None,
-                    "top_25_finish_rate_pct": round(
-                        sum(1 for value in placement_percentiles if value >= 75.0) * 100.0 / len(placement_percentiles),
-                        2,
-                    )
-                    if placement_percentiles
-                    else None,
+                    "placement_percentile_iqr": (
+                        round(placement_p75 - placement_p25, 2)
+                        if placement_p25 is not None and placement_p75 is not None
+                        else None
+                    ),
+                    "top_25_finish_rate_pct": (
+                        round(
+                            sum(1 for value in placement_percentiles if value >= 75.0)
+                            * 100.0
+                            / len(placement_percentiles),
+                            2,
+                        )
+                        if placement_percentiles
+                        else None
+                    ),
                     "median_cardmarket_deck_price_eur": price_p50,
-                    "cardmarket_deck_price_iqr_eur": round(price_p75 - price_p25, 2)
-                    if price_p25 is not None and price_p75 is not None
-                    else None,
+                    "cardmarket_deck_price_iqr_eur": (
+                        round(price_p75 - price_p25, 2)
+                        if price_p25 is not None and price_p75 is not None
+                        else None
+                    ),
                 }
             )
         return trend_rows
@@ -854,7 +1047,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         where_sql = "WHERE deck_name = ?" if deck_name is not None else ""
         limit_sql = "LIMIT ?" if limit is not None else ""
         parameters: tuple[Any, ...] = cte_parameters
@@ -902,7 +1097,9 @@ class DashboardRepository:
         if not rows:
             return rows
 
-        deck_names = [str(row["deck_name"]) for row in rows if row.get("deck_name") is not None]
+        deck_names = [
+            str(row["deck_name"]) for row in rows if row.get("deck_name") is not None
+        ]
         distribution_metrics = self._get_deck_name_distribution_metrics(
             deck_names,
             start_date=start_date,
@@ -1001,7 +1198,8 @@ class DashboardRepository:
                 total_copies DESC,
                 pdsc.card_name ASC
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + (deck_name,),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (deck_name,),
         )
 
         normalized_deck_name = deck_name.strip().lower()
@@ -1025,10 +1223,16 @@ class DashboardRepository:
                 effect_text=row["effect_text"],
             )
             key = (section, component_name, component_type)
-            component_totals[key] = component_totals.get(key, 0.0) + float(row["total_copies"])
+            component_totals[key] = component_totals.get(key, 0.0) + float(
+                row["total_copies"]
+            )
 
         composition_rows: list[dict[str, Any]] = []
-        for (section, component_name, component_type), total_copies in component_totals.items():
+        for (
+            section,
+            component_name,
+            component_type,
+        ), total_copies in component_totals.items():
             deck_count = section_deck_counts.get(section, 0)
             total_section_copies = section_total_copies.get(section, 0.0)
             if deck_count <= 0 or total_section_copies <= 0:
@@ -1038,7 +1242,9 @@ class DashboardRepository:
                     "section": section,
                     "component_name": component_name,
                     "component_type": component_type,
-                    "average_copies_per_group_deck": round(total_copies / deck_count, 2),
+                    "average_copies_per_group_deck": round(
+                        total_copies / deck_count, 2
+                    ),
                     "share_pct": round(total_copies * 100.0 / total_section_copies, 1),
                     "type_rank": self._deck_group_component_rank(component_type),
                 }
@@ -1062,7 +1268,9 @@ class DashboardRepository:
     ) -> list[dict[str, Any]]:
         return [
             row
-            for row in self.get_deck_group_section_composition(deck_name, start_date, end_date)
+            for row in self.get_deck_group_section_composition(
+                deck_name, start_date, end_date
+            )
             if row["section"] == "main"
         ]
 
@@ -1137,7 +1345,8 @@ class DashboardRepository:
                 total_copies DESC,
                 pdsc.card_name ASC
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + (deck_site_id,),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (deck_site_id,),
         )
         if not rows:
             return []
@@ -1161,10 +1370,16 @@ class DashboardRepository:
                 effect_text=row["effect_text"],
             )
             key = (section, component_name, component_type)
-            component_totals[key] = component_totals.get(key, 0.0) + float(row["total_copies"])
+            component_totals[key] = component_totals.get(key, 0.0) + float(
+                row["total_copies"]
+            )
 
         composition_rows: list[dict[str, Any]] = []
-        for (section, component_name, component_type), total_copies in component_totals.items():
+        for (
+            section,
+            component_name,
+            component_type,
+        ), total_copies in component_totals.items():
             total_section_copies = section_total_copies.get(section, 0.0)
             if total_section_copies <= 0:
                 continue
@@ -1194,7 +1409,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        per_deck_totals = self._get_monthly_deck_section_role_totals(start_date, end_date)
+        per_deck_totals = self._get_monthly_deck_section_role_totals(
+            start_date, end_date
+        )
         monthly_totals: dict[str, dict[str, float]] = defaultdict(
             lambda: {
                 "deck_count": 0.0,
@@ -1211,9 +1428,15 @@ class DashboardRepository:
                 continue
             month_start = str(deck_totals["month_start"])
             monthly_totals[month_start]["deck_count"] += 1.0
-            monthly_totals[month_start]["engine_share_sum"] += float(main_totals["engine"]) * 100.0 / main_total
-            monthly_totals[month_start]["handtrap_share_sum"] += float(main_totals["handtrap"]) * 100.0 / main_total
-            monthly_totals[month_start]["boardbreaker_share_sum"] += float(main_totals["boardbreaker"]) * 100.0 / main_total
+            monthly_totals[month_start]["engine_share_sum"] += (
+                float(main_totals["engine"]) * 100.0 / main_total
+            )
+            monthly_totals[month_start]["handtrap_share_sum"] += (
+                float(main_totals["handtrap"]) * 100.0 / main_total
+            )
+            monthly_totals[month_start]["boardbreaker_share_sum"] += (
+                float(main_totals["boardbreaker"]) * 100.0 / main_total
+            )
 
         trend_rows: list[dict[str, Any]] = []
         for month_start in sorted(monthly_totals.keys()):
@@ -1224,9 +1447,18 @@ class DashboardRepository:
                 {
                     "month_start": month_start,
                     "deck_count": deck_count,
-                    "average_engine_share_pct": round(monthly_totals[month_start]["engine_share_sum"] / deck_count, 2),
-                    "average_handtrap_share_pct": round(monthly_totals[month_start]["handtrap_share_sum"] / deck_count, 2),
-                    "average_boardbreaker_share_pct": round(monthly_totals[month_start]["boardbreaker_share_sum"] / deck_count, 2),
+                    "average_engine_share_pct": round(
+                        monthly_totals[month_start]["engine_share_sum"] / deck_count, 2
+                    ),
+                    "average_handtrap_share_pct": round(
+                        monthly_totals[month_start]["handtrap_share_sum"] / deck_count,
+                        2,
+                    ),
+                    "average_boardbreaker_share_pct": round(
+                        monthly_totals[month_start]["boardbreaker_share_sum"]
+                        / deck_count,
+                        2,
+                    ),
                 }
             )
         return trend_rows
@@ -1236,7 +1468,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        per_deck_totals = self._get_monthly_deck_section_role_totals(start_date, end_date)
+        per_deck_totals = self._get_monthly_deck_section_role_totals(
+            start_date, end_date
+        )
         monthly_totals: dict[str, dict[str, float]] = defaultdict(
             lambda: {
                 "deck_count": 0.0,
@@ -1253,9 +1487,15 @@ class DashboardRepository:
                 continue
             month_start = str(deck_totals["month_start"])
             monthly_totals[month_start]["deck_count"] += 1.0
-            monthly_totals[month_start]["handtrap_share_sum"] += float(side_totals["handtrap"]) * 100.0 / side_total
-            monthly_totals[month_start]["boardbreaker_share_sum"] += float(side_totals["boardbreaker"]) * 100.0 / side_total
-            monthly_totals[month_start]["non_engine_other_share_sum"] += float(side_totals["non_engine_other"]) * 100.0 / side_total
+            monthly_totals[month_start]["handtrap_share_sum"] += (
+                float(side_totals["handtrap"]) * 100.0 / side_total
+            )
+            monthly_totals[month_start]["boardbreaker_share_sum"] += (
+                float(side_totals["boardbreaker"]) * 100.0 / side_total
+            )
+            monthly_totals[month_start]["non_engine_other_share_sum"] += (
+                float(side_totals["non_engine_other"]) * 100.0 / side_total
+            )
 
         trend_rows: list[dict[str, Any]] = []
         for month_start in sorted(monthly_totals.keys()):
@@ -1266,9 +1506,20 @@ class DashboardRepository:
                 {
                     "month_start": month_start,
                     "deck_count": deck_count,
-                    "average_handtrap_share_pct": round(monthly_totals[month_start]["handtrap_share_sum"] / deck_count, 2),
-                    "average_boardbreaker_share_pct": round(monthly_totals[month_start]["boardbreaker_share_sum"] / deck_count, 2),
-                    "average_non_engine_other_share_pct": round(monthly_totals[month_start]["non_engine_other_share_sum"] / deck_count, 2),
+                    "average_handtrap_share_pct": round(
+                        monthly_totals[month_start]["handtrap_share_sum"] / deck_count,
+                        2,
+                    ),
+                    "average_boardbreaker_share_pct": round(
+                        monthly_totals[month_start]["boardbreaker_share_sum"]
+                        / deck_count,
+                        2,
+                    ),
+                    "average_non_engine_other_share_pct": round(
+                        monthly_totals[month_start]["non_engine_other_share_sum"]
+                        / deck_count,
+                        2,
+                    ),
                 }
             )
         return trend_rows
@@ -1278,7 +1529,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        per_deck_totals = self._get_monthly_deck_section_role_totals(start_date, end_date)
+        per_deck_totals = self._get_monthly_deck_section_role_totals(
+            start_date, end_date
+        )
         monthly_totals: dict[str, dict[str, float]] = defaultdict(
             lambda: {
                 "deck_count": 0.0,
@@ -1290,30 +1543,38 @@ class DashboardRepository:
         )
 
         for deck_totals in per_deck_totals.values():
-            combined_other_total = float(deck_totals["sections"]["main"]["non_engine_other"]) + float(
-                deck_totals["sections"]["side"]["non_engine_other"]
-            )
+            combined_other_total = float(
+                deck_totals["sections"]["main"]["non_engine_other"]
+            ) + float(deck_totals["sections"]["side"]["non_engine_other"])
             if combined_other_total <= 0:
                 continue
-            floodgate_total = float(deck_totals["sections"]["main"]["floodgate"]) + float(
-                deck_totals["sections"]["side"]["floodgate"]
-            )
-            protection_total = float(deck_totals["sections"]["main"]["protection"]) + float(
-                deck_totals["sections"]["side"]["protection"]
-            )
-            draw_engine_total = float(deck_totals["sections"]["main"]["draw_engine"]) + float(
-                deck_totals["sections"]["side"]["draw_engine"]
-            )
-            unknown_total = float(deck_totals["sections"]["main"]["unknown_non_engine"]) + float(
-                deck_totals["sections"]["side"]["unknown_non_engine"]
-            )
+            floodgate_total = float(
+                deck_totals["sections"]["main"]["floodgate"]
+            ) + float(deck_totals["sections"]["side"]["floodgate"])
+            protection_total = float(
+                deck_totals["sections"]["main"]["protection"]
+            ) + float(deck_totals["sections"]["side"]["protection"])
+            draw_engine_total = float(
+                deck_totals["sections"]["main"]["draw_engine"]
+            ) + float(deck_totals["sections"]["side"]["draw_engine"])
+            unknown_total = float(
+                deck_totals["sections"]["main"]["unknown_non_engine"]
+            ) + float(deck_totals["sections"]["side"]["unknown_non_engine"])
 
             month_start = str(deck_totals["month_start"])
             monthly_totals[month_start]["deck_count"] += 1.0
-            monthly_totals[month_start]["floodgate_share_sum"] += floodgate_total * 100.0 / combined_other_total
-            monthly_totals[month_start]["protection_share_sum"] += protection_total * 100.0 / combined_other_total
-            monthly_totals[month_start]["draw_engine_share_sum"] += draw_engine_total * 100.0 / combined_other_total
-            monthly_totals[month_start]["unknown_share_sum"] += unknown_total * 100.0 / combined_other_total
+            monthly_totals[month_start]["floodgate_share_sum"] += (
+                floodgate_total * 100.0 / combined_other_total
+            )
+            monthly_totals[month_start]["protection_share_sum"] += (
+                protection_total * 100.0 / combined_other_total
+            )
+            monthly_totals[month_start]["draw_engine_share_sum"] += (
+                draw_engine_total * 100.0 / combined_other_total
+            )
+            monthly_totals[month_start]["unknown_share_sum"] += (
+                unknown_total * 100.0 / combined_other_total
+            )
 
         trend_rows: list[dict[str, Any]] = []
         for month_start in sorted(monthly_totals.keys()):
@@ -1324,10 +1585,23 @@ class DashboardRepository:
                 {
                     "month_start": month_start,
                     "deck_count": deck_count,
-                    "average_floodgate_share_pct": round(monthly_totals[month_start]["floodgate_share_sum"] / deck_count, 2),
-                    "average_protection_share_pct": round(monthly_totals[month_start]["protection_share_sum"] / deck_count, 2),
-                    "average_draw_engine_share_pct": round(monthly_totals[month_start]["draw_engine_share_sum"] / deck_count, 2),
-                    "average_unknown_share_pct": round(monthly_totals[month_start]["unknown_share_sum"] / deck_count, 2),
+                    "average_floodgate_share_pct": round(
+                        monthly_totals[month_start]["floodgate_share_sum"] / deck_count,
+                        2,
+                    ),
+                    "average_protection_share_pct": round(
+                        monthly_totals[month_start]["protection_share_sum"]
+                        / deck_count,
+                        2,
+                    ),
+                    "average_draw_engine_share_pct": round(
+                        monthly_totals[month_start]["draw_engine_share_sum"]
+                        / deck_count,
+                        2,
+                    ),
+                    "average_unknown_share_pct": round(
+                        monthly_totals[month_start]["unknown_share_sum"] / deck_count, 2
+                    ),
                 }
             )
         return trend_rows
@@ -1337,7 +1611,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        per_deck_totals = self._get_monthly_deck_section_role_totals(start_date, end_date)
+        per_deck_totals = self._get_monthly_deck_section_role_totals(
+            start_date, end_date
+        )
         monthly_totals: dict[tuple[str, str], dict[str, float]] = defaultdict(
             lambda: {
                 "deck_count": 0.0,
@@ -1355,8 +1631,12 @@ class DashboardRepository:
                     continue
                 key = (month_start, section)
                 monthly_totals[key]["deck_count"] += 1.0
-                monthly_totals[key]["engine_share_sum"] += float(section_totals["engine"]) * 100.0 / section_total
-                monthly_totals[key]["non_engine_share_sum"] += float(section_totals["non_engine_total"]) * 100.0 / section_total
+                monthly_totals[key]["engine_share_sum"] += (
+                    float(section_totals["engine"]) * 100.0 / section_total
+                )
+                monthly_totals[key]["non_engine_share_sum"] += (
+                    float(section_totals["non_engine_total"]) * 100.0 / section_total
+                )
 
         trend_rows: list[dict[str, Any]] = []
         for month_start, section in sorted(monthly_totals.keys()):
@@ -1369,11 +1649,13 @@ class DashboardRepository:
                     "section": section,
                     "deck_count": deck_count,
                     "average_engine_share_pct": round(
-                        monthly_totals[(month_start, section)]["engine_share_sum"] / deck_count,
+                        monthly_totals[(month_start, section)]["engine_share_sum"]
+                        / deck_count,
                         2,
                     ),
                     "average_non_engine_share_pct": round(
-                        monthly_totals[(month_start, section)]["non_engine_share_sum"] / deck_count,
+                        monthly_totals[(month_start, section)]["non_engine_share_sum"]
+                        / deck_count,
                         2,
                     ),
                 }
@@ -1391,7 +1673,9 @@ class DashboardRepository:
 
         monthly_results: dict[str, dict[str, int]] = defaultdict(dict)
         for row in rows:
-            monthly_results[str(row["month_start"])][str(row["deck_name"])] = int(row["result_count"])
+            monthly_results[str(row["month_start"])][str(row["deck_name"])] = int(
+                row["result_count"]
+            )
 
         trend_rows: list[dict[str, Any]] = []
         previous_deck_names: set[str] | None = None
@@ -1406,10 +1690,18 @@ class DashboardRepository:
                 new_result_count: int | None = None
                 new_result_share_pct: float | None = None
             else:
-                new_deck_names = {deck_name for deck_name in result_counts if deck_name not in previous_deck_names}
+                new_deck_names = {
+                    deck_name
+                    for deck_name in result_counts
+                    if deck_name not in previous_deck_names
+                }
                 new_deck_name_count = len(new_deck_names)
-                new_result_count = sum(result_counts[deck_name] for deck_name in new_deck_names)
-                new_result_share_pct = round(new_result_count * 100.0 / total_results, 2)
+                new_result_count = sum(
+                    result_counts[deck_name] for deck_name in new_deck_names
+                )
+                new_result_share_pct = round(
+                    new_result_count * 100.0 / total_results, 2
+                )
 
             trend_rows.append(
                 {
@@ -1472,7 +1764,9 @@ class DashboardRepository:
                 cumulative_results += int(result_count)
                 deck_name_count += 1
                 while threshold_index < len(threshold_definitions):
-                    threshold_share, threshold_key = threshold_definitions[threshold_index]
+                    threshold_share, threshold_key = threshold_definitions[
+                        threshold_index
+                    ]
                     if cumulative_results / total_results >= threshold_share:
                         trend_row[threshold_key] = deck_name_count
                         threshold_index += 1
@@ -1493,7 +1787,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         rows = self._fetch_all(
             f"""
             WITH {cte_sql}
@@ -1520,7 +1816,9 @@ class DashboardRepository:
             monthly_rows[str(month_start)].append(
                 {
                     "result_count": float(row["result_count"]),
-                    "average_cardmarket_deck_price_eur": float(row["average_cardmarket_deck_price_eur"] or 0.0),
+                    "average_cardmarket_deck_price_eur": float(
+                        row["average_cardmarket_deck_price_eur"] or 0.0
+                    ),
                 }
             )
 
@@ -1536,11 +1834,15 @@ class DashboardRepository:
             if top_result_count <= 0 or top_deck_name_count <= 0:
                 continue
             average_top_10_cardmarket_price_eur = round(
-                sum(row["average_cardmarket_deck_price_eur"] for row in top_rows) / top_deck_name_count,
+                sum(row["average_cardmarket_deck_price_eur"] for row in top_rows)
+                / top_deck_name_count,
                 2,
             )
             weighted_average_top_10_cardmarket_price_eur = round(
-                sum(row["average_cardmarket_deck_price_eur"] * row["result_count"] for row in top_rows)
+                sum(
+                    row["average_cardmarket_deck_price_eur"] * row["result_count"]
+                    for row in top_rows
+                )
                 / top_result_count,
                 2,
             )
@@ -1550,7 +1852,9 @@ class DashboardRepository:
                     "result_count": total_results,
                     "top_10_deck_name_count": top_deck_name_count,
                     "top_10_result_count": top_result_count,
-                    "top_10_result_share_pct": round(top_result_count * 100.0 / total_results, 2),
+                    "top_10_result_share_pct": round(
+                        top_result_count * 100.0 / total_results, 2
+                    ),
                     "average_top_10_cardmarket_price_eur": average_top_10_cardmarket_price_eur,
                     "weighted_average_top_10_cardmarket_price_eur": weighted_average_top_10_cardmarket_price_eur,
                 }
@@ -1647,7 +1951,8 @@ class DashboardRepository:
                 card_name ASC,
                 MIN(dc.card_passcode) ASC
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + (deck_site_id,),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (deck_site_id,),
         )
 
         grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -1658,15 +1963,17 @@ class DashboardRepository:
             role_label = None
 
             if section in {"main", "side"}:
-                resolved_component_name, resolved_component_type, resolved_role = self._resolve_deck_group_component_and_role(
-                    normalized_deck_name=normalized_deck_name,
-                    card_name=str(row["card_name"]),
-                    card_archetype=row["card_archetype"],
-                    classification=str(row["classification"]),
-                    card_type=row["card_type"],
-                    frame_type=row["frame_type"],
-                    race=row["card_race"],
-                    effect_text=row["effect_text"],
+                resolved_component_name, resolved_component_type, resolved_role = (
+                    self._resolve_deck_group_component_and_role(
+                        normalized_deck_name=normalized_deck_name,
+                        card_name=str(row["card_name"]),
+                        card_archetype=row["card_archetype"],
+                        classification=str(row["classification"]),
+                        card_type=row["card_type"],
+                        frame_type=row["frame_type"],
+                        race=row["card_race"],
+                        effect_text=row["effect_text"],
+                    )
                 )
                 component_name = resolved_component_name
                 component_type = resolved_component_type
@@ -1676,7 +1983,9 @@ class DashboardRepository:
                     role_label = "Handtrap"
                 elif resolved_component_type == "non_engine_boardbreaker":
                     role_label = "Boardbreaker"
-                elif resolved_role is not None and resolved_role != "unknown_non_engine":
+                elif (
+                    resolved_role is not None and resolved_role != "unknown_non_engine"
+                ):
                     role_label = format_non_engine_role_label(resolved_role)
                 else:
                     role_label = "Weitere Non-Engine"
@@ -1689,15 +1998,29 @@ class DashboardRepository:
                     "Bild": row["image_url_small"],
                     "Karte": row["card_name"],
                     "Anzahl": int(row["quantity"]),
-                    "Komponente": self._format_detailed_component_label(component_name, component_type),
+                    "Komponente": self._format_detailed_component_label(
+                        component_name, component_type
+                    ),
                     "Rolle": role_label,
-                    "Cardmarket €": float(row["cardmarket_price_eur"]) if row["cardmarket_price_eur"] is not None else None,
-                    "Gesamt €": float(row["total_cardmarket_price_eur"]) if row["total_cardmarket_price_eur"] is not None else None,
-                    "Kostenklasse": self._card_cost_bucket_label(row["cardmarket_price_eur"]),
+                    "Cardmarket €": (
+                        float(row["cardmarket_price_eur"])
+                        if row["cardmarket_price_eur"] is not None
+                        else None
+                    ),
+                    "Gesamt €": (
+                        float(row["total_cardmarket_price_eur"])
+                        if row["total_cardmarket_price_eur"] is not None
+                        else None
+                    ),
+                    "Kostenklasse": self._card_cost_bucket_label(
+                        row["cardmarket_price_eur"]
+                    ),
                     "Passcode": int(row["card_passcode"]),
                 }
             )
-        return {section: grouped.get(section, []) for section in ("main", "extra", "side")}
+        return {
+            section: grouped.get(section, []) for section in ("main", "extra", "side")
+        }
 
     def get_deck_section_heatmap_rows(
         self,
@@ -1705,7 +2028,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        detailed_cards = self.get_deck_cards_detailed(deck_site_id, start_date, end_date)
+        detailed_cards = self.get_deck_cards_detailed(
+            deck_site_id, start_date, end_date
+        )
         section_labels = {
             "main": "Main Deck",
             "extra": "Extra Deck",
@@ -1853,7 +2178,8 @@ class DashboardRepository:
                 average_copies_per_deck DESC,
                 cs.card_name ASC
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + (deck_name, deck_name, deck_name),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (deck_name, deck_name, deck_name),
         )
         grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
@@ -1865,10 +2191,20 @@ class DashboardRepository:
                     frame_type=row["frame_type"],
                     race=row["card_race"],
                     effect_text=row["effect_text"],
-                    average_main_copies=row["average_copies_per_deck"] if row["section"] == "main" else 0.0,
-                    average_side_copies=row["average_copies_per_deck"] if row["section"] == "side" else 0.0,
+                    average_main_copies=(
+                        row["average_copies_per_deck"]
+                        if row["section"] == "main"
+                        else 0.0
+                    ),
+                    average_side_copies=(
+                        row["average_copies_per_deck"]
+                        if row["section"] == "side"
+                        else 0.0
+                    ),
                 )
-                component_class = f"Non-Engine: {format_non_engine_role_label(role_scores.role)}"
+                component_class = (
+                    f"Non-Engine: {format_non_engine_role_label(role_scores.role)}"
+                )
             grouped[str(row["section"])].append(
                 {
                     "Bild": row["image_url_small"],
@@ -1878,12 +2214,22 @@ class DashboardRepository:
                     "Anteil %": float(row["inclusion_rate_pct"]),
                     "Ø Kopien / Deck": float(row["average_copies_per_deck"]),
                     "Ø Kopien bei Nutzung": float(row["average_copies_when_present"]),
-                    "Ø Cardmarket €": float(row["average_cardmarket_price_eur"]) if row["average_cardmarket_price_eur"] is not None else None,
-                    "Ø Kosten / Deck €": float(row["average_cardmarket_cost_per_deck_eur"]) if row["average_cardmarket_cost_per_deck_eur"] is not None else None,
+                    "Ø Cardmarket €": (
+                        float(row["average_cardmarket_price_eur"])
+                        if row["average_cardmarket_price_eur"] is not None
+                        else None
+                    ),
+                    "Ø Kosten / Deck €": (
+                        float(row["average_cardmarket_cost_per_deck_eur"])
+                        if row["average_cardmarket_cost_per_deck_eur"] is not None
+                        else None
+                    ),
                     "Gesamtkopien": int(row["total_copies"]),
                 }
             )
-        return {section: grouped.get(section, []) for section in ("main", "extra", "side")}
+        return {
+            section: grouped.get(section, []) for section in ("main", "extra", "side")
+        }
 
     def list_deck_instances_for_name(
         self,
@@ -1892,7 +2238,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[dict[str, Any]]:
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         rows = self._fetch_all(
             f"""
             WITH {cte_sql}
@@ -2089,9 +2437,18 @@ class DashboardRepository:
                 ac.card_name ASC
             LIMIT ?
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + (classification, limit),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (classification, limit),
         )
-        return self._annotate_non_engine_roles([dict(row) for row in rows], classification=classification)
+        annotated_rows = self._annotate_non_engine_roles(
+            [dict(row) for row in rows], classification=classification
+        )
+        return self._attach_non_engine_card_performance_fields(
+            annotated_rows,
+            classification=classification,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
     def list_non_engine_cards_for_deck_group(
         self,
@@ -2227,9 +2584,213 @@ class DashboardRepository:
                 alc.card_name ASC
             LIMIT ?
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + (deck_name, classification, limit),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (deck_name, classification, limit),
         )
-        return self._annotate_non_engine_roles([dict(row) for row in rows], classification=classification)
+        return self._annotate_non_engine_roles(
+            [dict(row) for row in rows], classification=classification
+        )
+
+    def list_deck_groups_for_non_engine_card(
+        self,
+        card_name: str,
+        classification: str = "non_engine",
+        limit: int = 25,
+        start_date: date | str | None = None,
+        end_date: date | str | None = None,
+    ) -> list[dict[str, Any]]:
+        normalized_card_name = card_name.strip()
+        if not normalized_card_name:
+            return []
+
+        rows = self._fetch_all(
+            f"""
+            {self._non_engine_classification_cte(start_date, end_date)}
+            , target_card_sections AS (
+                SELECT
+                    cc.section,
+                    cc.card_name
+                FROM classified_cards cc
+                WHERE cc.classification = ?
+                  AND cc.card_name = ?
+                GROUP BY cc.section, cc.card_name
+            ),
+            per_deck_section_cards AS (
+                SELECT
+                    fd.deck_name,
+                    fd.deck_site_id,
+                    dsv.participants_count,
+                    dsv.placement_sort_value,
+                    dc.section,
+                    COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT)) AS card_name,
+                    SUM(dc.quantity) AS copies_in_deck
+                FROM deck_cards dc
+                JOIN filtered_decks fd ON fd.deck_site_id = dc.deck_site_id
+                JOIN dashboard_deck_summary_v dsv ON dsv.deck_site_id = fd.deck_site_id
+                LEFT JOIN cards c ON c.card_passcode = dc.card_passcode
+                JOIN target_card_sections tcs
+                  ON tcs.section = dc.section
+                 AND tcs.card_name = COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT))
+                WHERE dc.section IN ('main', 'side')
+                GROUP BY
+                    fd.deck_name,
+                    fd.deck_site_id,
+                    dsv.participants_count,
+                    dsv.placement_sort_value,
+                    dc.section,
+                    COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT))
+            ),
+            filtered_per_deck_cards AS (
+                SELECT
+                    pds.deck_name,
+                    pds.deck_site_id,
+                    pds.participants_count,
+                    pds.placement_sort_value,
+                    MAX(CASE WHEN pds.section = 'main' THEN pds.copies_in_deck ELSE 0 END) AS main_copies_in_deck,
+                    MAX(CASE WHEN pds.section = 'side' THEN pds.copies_in_deck ELSE 0 END) AS side_copies_in_deck
+                FROM per_deck_section_cards pds
+                GROUP BY
+                    pds.deck_name,
+                    pds.deck_site_id,
+                    pds.participants_count,
+                    pds.placement_sort_value
+            )
+            SELECT
+                fpdc.deck_name,
+                fpdc.deck_site_id,
+                fpdc.participants_count,
+                fpdc.placement_sort_value,
+                fpdc.main_copies_in_deck,
+                fpdc.side_copies_in_deck,
+                dgt.deck_count AS deck_group_size
+            FROM filtered_per_deck_cards fpdc
+            JOIN deck_group_totals dgt ON dgt.deck_name = fpdc.deck_name
+            ORDER BY
+                fpdc.deck_name ASC,
+                fpdc.placement_sort_value ASC,
+                fpdc.deck_site_id ASC
+            """,
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (classification, normalized_card_name),
+        )
+
+        if not rows:
+            return []
+
+        total_results = len(rows)
+        group_stats: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {
+                "deck_group_size": 0,
+                "decks_with_card": 0,
+                "decks_with_main": 0,
+                "decks_with_side": 0,
+                "total_main_copies": 0.0,
+                "total_side_copies": 0.0,
+                "placement_percentiles": [],
+            }
+        )
+
+        for row in rows:
+            deck_name = str(row["deck_name"])
+            stats = group_stats[deck_name]
+            stats["deck_group_size"] = int(row["deck_group_size"] or 0)
+            stats["decks_with_card"] += 1
+
+            main_copies_in_deck = float(row["main_copies_in_deck"] or 0.0)
+            side_copies_in_deck = float(row["side_copies_in_deck"] or 0.0)
+            stats["total_main_copies"] += main_copies_in_deck
+            stats["total_side_copies"] += side_copies_in_deck
+            if main_copies_in_deck > 0:
+                stats["decks_with_main"] += 1
+            if side_copies_in_deck > 0:
+                stats["decks_with_side"] += 1
+
+            placement_percentile = self._placement_percentile_value(
+                participants_count=row["participants_count"],
+                placement_sort_value=row["placement_sort_value"],
+            )
+            if placement_percentile is not None:
+                stats["placement_percentiles"].append(float(placement_percentile))
+
+        drilldown_rows: list[dict[str, Any]] = []
+        for deck_name, stats in group_stats.items():
+            deck_group_size = int(stats["deck_group_size"] or 0)
+            decks_with_card = int(stats["decks_with_card"] or 0)
+            if deck_group_size <= 0 or decks_with_card <= 0:
+                continue
+
+            placement_percentiles = sorted(
+                float(value) for value in stats["placement_percentiles"]
+            )
+            placement_p25 = self._interpolated_quantile(placement_percentiles, 0.25)
+            placement_p50 = self._interpolated_quantile(placement_percentiles, 0.50)
+            placement_p75 = self._interpolated_quantile(placement_percentiles, 0.75)
+            total_main_copies = float(stats["total_main_copies"])
+            total_side_copies = float(stats["total_side_copies"])
+            total_copies = total_main_copies + total_side_copies
+
+            drilldown_rows.append(
+                {
+                    "deck_name": deck_name,
+                    "deck_group_size": deck_group_size,
+                    "decks_with_card": decks_with_card,
+                    "card_group_share_pct": round(
+                        decks_with_card * 100.0 / total_results, 2
+                    ),
+                    "group_inclusion_rate_pct": round(
+                        decks_with_card * 100.0 / deck_group_size, 2
+                    ),
+                    "average_main_copies_per_group_deck": round(
+                        total_main_copies / deck_group_size, 2
+                    ),
+                    "average_side_copies_per_group_deck": round(
+                        total_side_copies / deck_group_size, 2
+                    ),
+                    "main_presence_pct": round(
+                        int(stats["decks_with_main"]) * 100.0 / deck_group_size, 2
+                    ),
+                    "side_presence_pct": round(
+                        int(stats["decks_with_side"]) * 100.0 / deck_group_size, 2
+                    ),
+                    "average_copies_when_present": round(
+                        total_copies / decks_with_card, 2
+                    ),
+                    "average_placement_percentile": (
+                        round(
+                            sum(placement_percentiles) / len(placement_percentiles), 2
+                        )
+                        if placement_percentiles
+                        else None
+                    ),
+                    "median_placement_percentile": placement_p50,
+                    "placement_percentile_iqr": (
+                        round(placement_p75 - placement_p25, 2)
+                        if placement_p25 is not None and placement_p75 is not None
+                        else None
+                    ),
+                    "top_25_finish_rate_pct": (
+                        round(
+                            sum(1 for value in placement_percentiles if value >= 75.0)
+                            * 100.0
+                            / len(placement_percentiles),
+                            2,
+                        )
+                        if placement_percentiles
+                        else None
+                    ),
+                    "valid_placement_percentile_count": len(placement_percentiles),
+                }
+            )
+
+        drilldown_rows.sort(
+            key=lambda row: (
+                -float(row.get("group_inclusion_rate_pct") or 0.0),
+                -float(row.get("card_group_share_pct") or 0.0),
+                -float(row.get("median_placement_percentile") or 0.0),
+                str(row["deck_name"]),
+            )
+        )
+        return drilldown_rows[:limit]
 
     def list_tournaments(
         self,
@@ -2263,16 +2824,14 @@ class DashboardRepository:
         return [dict(row) for row in rows]
 
     def list_skip_reason_summary(self) -> list[dict[str, Any]]:
-        rows = self._fetch_all(
-            """
+        rows = self._fetch_all("""
             SELECT
                 skip_reason,
                 COUNT(*) AS anzahl
             FROM skipped_sources
             GROUP BY skip_reason
             ORDER BY anzahl DESC, skip_reason ASC
-            """
-        )
+            """)
         return [dict(row) for row in rows]
 
     def list_skipped_sources(self, limit: int = 25) -> list[dict[str, Any]]:
@@ -2316,7 +2875,9 @@ class DashboardRepository:
                     side_presence_pct=annotated.get("side_presence_pct"),
                 )
                 annotated["non_engine_role"] = role_scores.role
-                annotated["non_engine_role_label"] = format_non_engine_role_label(role_scores.role)
+                annotated["non_engine_role_label"] = format_non_engine_role_label(
+                    role_scores.role
+                )
                 annotated["role_confidence"] = role_scores.confidence
                 annotated["handtrap_score"] = role_scores.handtrap_score
                 annotated["boardbreaker_score"] = role_scores.boardbreaker_score
@@ -2335,6 +2896,185 @@ class DashboardRepository:
             annotated_rows.append(annotated)
         return annotated_rows
 
+    def _attach_non_engine_card_performance_fields(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        classification: str,
+        start_date: date | str | None = None,
+        end_date: date | str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not rows:
+            return rows
+
+        normalized_card_names = sorted(
+            {str(row["card_name"]) for row in rows if row.get("card_name") is not None}
+        )
+        if not normalized_card_names:
+            return rows
+
+        placeholders = ", ".join("?" for _ in normalized_card_names)
+        result_rows = self._fetch_all(
+            f"""
+            {self._non_engine_classification_cte(start_date, end_date)}
+            , target_card_sections AS (
+                SELECT
+                    cc.section,
+                    cc.card_name
+                FROM classified_cards cc
+                WHERE cc.classification = ?
+                  AND cc.card_name IN ({placeholders})
+                GROUP BY cc.section, cc.card_name
+            ),
+            card_result_rows AS (
+                SELECT
+                    tcs.card_name,
+                    fd.deck_site_id,
+                    dsv.participants_count,
+                    dsv.placement_sort_value
+                FROM filtered_decks fd
+                JOIN dashboard_deck_summary_v dsv ON dsv.deck_site_id = fd.deck_site_id
+                JOIN deck_cards dc ON dc.deck_site_id = fd.deck_site_id
+                LEFT JOIN cards c ON c.card_passcode = dc.card_passcode
+                JOIN target_card_sections tcs
+                  ON tcs.section = dc.section
+                 AND tcs.card_name = COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT))
+                WHERE dc.section IN ('main', 'side')
+                GROUP BY
+                    tcs.card_name,
+                    fd.deck_site_id,
+                    dsv.participants_count,
+                    dsv.placement_sort_value
+            )
+            SELECT
+                card_name,
+                participants_count,
+                placement_sort_value
+            FROM card_result_rows
+            ORDER BY card_name ASC, placement_sort_value ASC
+            """,
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (classification,)
+            + tuple(normalized_card_names),
+        )
+
+        field_rows = self._fetch_all(
+            f"""
+            {self._non_engine_classification_cte(start_date, end_date)}
+            SELECT
+                dsv.participants_count,
+                dsv.placement_sort_value
+            FROM filtered_decks fd
+            JOIN dashboard_deck_summary_v dsv ON dsv.deck_site_id = fd.deck_site_id
+            ORDER BY dsv.placement_sort_value ASC
+            """,
+            self._non_engine_classification_parameters(start_date, end_date),
+        )
+
+        field_percentiles = [
+            float(placement_percentile)
+            for row in field_rows
+            if (
+                placement_percentile := self._placement_percentile_value(
+                    participants_count=row["participants_count"],
+                    placement_sort_value=row["placement_sort_value"],
+                )
+            )
+            is not None
+        ]
+        field_average_placement_percentile = (
+            round(sum(field_percentiles) / len(field_percentiles), 2)
+            if field_percentiles
+            else None
+        )
+
+        card_stats: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {
+                "placement_percentiles": [],
+            }
+        )
+        for row in result_rows:
+            card_name = str(row["card_name"])
+            placement_percentile = self._placement_percentile_value(
+                participants_count=row["participants_count"],
+                placement_sort_value=row["placement_sort_value"],
+            )
+            if placement_percentile is not None:
+                card_stats[card_name]["placement_percentiles"].append(
+                    float(placement_percentile)
+                )
+
+        performance_by_card: dict[str, dict[str, Any]] = {}
+        for card_name in normalized_card_names:
+            placement_percentiles = sorted(
+                card_stats.get(card_name, {}).get("placement_percentiles", [])
+            )
+            placement_p25 = self._interpolated_quantile(placement_percentiles, 0.25)
+            placement_p50 = self._interpolated_quantile(placement_percentiles, 0.50)
+            placement_p75 = self._interpolated_quantile(placement_percentiles, 0.75)
+            average_placement_percentile = (
+                round(sum(placement_percentiles) / len(placement_percentiles), 2)
+                if placement_percentiles
+                else None
+            )
+            top_25_finish_rate_pct = (
+                round(
+                    sum(1 for value in placement_percentiles if value >= 75.0)
+                    * 100.0
+                    / len(placement_percentiles),
+                    2,
+                )
+                if placement_percentiles
+                else None
+            )
+
+            performance_by_card[card_name] = {
+                "average_placement_percentile": average_placement_percentile,
+                "median_placement_percentile": placement_p50,
+                "placement_percentile_p25": placement_p25,
+                "placement_percentile_p75": placement_p75,
+                "placement_percentile_iqr": (
+                    round(placement_p75 - placement_p25, 2)
+                    if placement_p25 is not None and placement_p75 is not None
+                    else None
+                ),
+                "top_25_finish_rate_pct": top_25_finish_rate_pct,
+                "valid_placement_percentile_count": len(placement_percentiles),
+                "field_average_placement_percentile": field_average_placement_percentile,
+                "delta_vs_field_average_placement_percentile": (
+                    round(
+                        average_placement_percentile
+                        - field_average_placement_percentile,
+                        2,
+                    )
+                    if average_placement_percentile is not None
+                    and field_average_placement_percentile is not None
+                    else None
+                ),
+            }
+
+        annotated_rows: list[dict[str, Any]] = []
+        default_metrics = {
+            "average_placement_percentile": None,
+            "median_placement_percentile": None,
+            "placement_percentile_p25": None,
+            "placement_percentile_p75": None,
+            "placement_percentile_iqr": None,
+            "top_25_finish_rate_pct": None,
+            "valid_placement_percentile_count": 0,
+            "field_average_placement_percentile": field_average_placement_percentile,
+            "delta_vs_field_average_placement_percentile": None,
+        }
+        for row in rows:
+            annotated = dict(row)
+            annotated.update(
+                performance_by_card.get(
+                    str(row.get("card_name") or ""), default_metrics
+                )
+            )
+            annotated_rows.append(annotated)
+        return annotated_rows
+
     def _attach_deck_name_component_averages(
         self,
         rows: list[dict[str, Any]],
@@ -2345,7 +3085,9 @@ class DashboardRepository:
         if not rows:
             return rows
 
-        deck_names = [str(row["deck_name"]) for row in rows if row.get("deck_name") is not None]
+        deck_names = [
+            str(row["deck_name"]) for row in rows if row.get("deck_name") is not None
+        ]
         component_averages = self._get_deck_name_main_component_averages(
             deck_names,
             start_date=start_date,
@@ -2377,8 +3119,12 @@ class DashboardRepository:
         if not rows:
             return rows
 
-        deck_names = [str(row["deck_name"]) for row in rows if row.get("deck_name") is not None]
-        totals = self._get_filtered_deck_summary_totals(start_date=start_date, end_date=end_date)
+        deck_names = [
+            str(row["deck_name"]) for row in rows if row.get("deck_name") is not None
+        ]
+        totals = self._get_filtered_deck_summary_totals(
+            start_date=start_date, end_date=end_date
+        )
         component_averages = self._get_deck_name_main_component_averages(
             deck_names,
             start_date=start_date,
@@ -2437,11 +3183,19 @@ class DashboardRepository:
             annotated.update(component_averages.get(deck_name, component_defaults))
             annotated.update(side_profile_averages.get(deck_name, side_defaults))
             annotated.update(distribution_metrics.get(deck_name, distribution_defaults))
-            annotated["meta_share_pct"] = round(deck_count * 100.0 / total_deck_count, 2) if total_deck_count > 0 else 0.0
-            annotated["tournament_coverage_pct"] = (
-                round(tournament_count * 100.0 / total_tournament_count, 2) if total_tournament_count > 0 else 0.0
+            annotated["meta_share_pct"] = (
+                round(deck_count * 100.0 / total_deck_count, 2)
+                if total_deck_count > 0
+                else 0.0
             )
-            annotated["player_diversity_ratio"] = round(player_count / deck_count, 3) if deck_count > 0 else 0.0
+            annotated["tournament_coverage_pct"] = (
+                round(tournament_count * 100.0 / total_tournament_count, 2)
+                if total_tournament_count > 0
+                else 0.0
+            )
+            annotated["player_diversity_ratio"] = (
+                round(player_count / deck_count, 3) if deck_count > 0 else 0.0
+            )
             annotated_rows.append(annotated)
         return annotated_rows
 
@@ -2451,7 +3205,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> dict[str, Any]:
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         row = self._fetch_one(
             f"""
             WITH {cte_sql}
@@ -2465,10 +3221,20 @@ class DashboardRepository:
         )
         latest_tournament_date = None
         if row is not None and row["latest_tournament_date"] is not None:
-            latest_tournament_date = date.fromisoformat(str(row["latest_tournament_date"]))
+            latest_tournament_date = date.fromisoformat(
+                str(row["latest_tournament_date"])
+            )
         return {
-            "total_deck_count": int(row["total_deck_count"]) if row is not None and row["total_deck_count"] is not None else 0,
-            "total_tournament_count": int(row["total_tournament_count"]) if row is not None and row["total_tournament_count"] is not None else 0,
+            "total_deck_count": (
+                int(row["total_deck_count"])
+                if row is not None and row["total_deck_count"] is not None
+                else 0
+            ),
+            "total_tournament_count": (
+                int(row["total_tournament_count"])
+                if row is not None and row["total_tournament_count"] is not None
+                else 0
+            ),
             "latest_tournament_date": latest_tournament_date,
         }
 
@@ -2480,12 +3246,16 @@ class DashboardRepository:
         end_date: date | str | None = None,
         latest_tournament_date: date | None = None,
     ) -> dict[str, dict[str, Any]]:
-        normalized_deck_names = sorted({deck_name.strip() for deck_name in deck_names if deck_name.strip()})
+        normalized_deck_names = sorted(
+            {deck_name.strip() for deck_name in deck_names if deck_name.strip()}
+        )
         if not normalized_deck_names:
             return {}
 
         placeholders = ", ".join("?" for _ in normalized_deck_names)
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         rows = self._fetch_all(
             f"""
             WITH {cte_sql}
@@ -2502,7 +3272,11 @@ class DashboardRepository:
             cte_parameters + tuple(normalized_deck_names),
         )
 
-        recent_cutoff_date = latest_tournament_date - timedelta(days=30) if latest_tournament_date is not None else None
+        recent_cutoff_date = (
+            latest_tournament_date - timedelta(days=30)
+            if latest_tournament_date is not None
+            else None
+        )
         deck_stats: dict[str, dict[str, Any]] = defaultdict(
             lambda: {
                 "placement_percentiles": [],
@@ -2541,7 +3315,9 @@ class DashboardRepository:
                 distribution_metrics[deck_name] = {}
                 continue
 
-            placement_percentiles = sorted(float(value) for value in stats["placement_percentiles"])
+            placement_percentiles = sorted(
+                float(value) for value in stats["placement_percentiles"]
+            )
             known_prices = sorted(float(value) for value in stats["known_prices"])
             placement_p25 = self._interpolated_quantile(placement_percentiles, 0.25)
             placement_p50 = self._interpolated_quantile(placement_percentiles, 0.50)
@@ -2551,11 +3327,15 @@ class DashboardRepository:
             price_p75 = self._interpolated_quantile(known_prices, 0.75)
 
             average_placement_percentile = (
-                round(sum(placement_percentiles) / len(placement_percentiles), 2) if placement_percentiles else None
+                round(sum(placement_percentiles) / len(placement_percentiles), 2)
+                if placement_percentiles
+                else None
             )
             top_25_finish_rate_pct = (
                 round(
-                    sum(1 for value in placement_percentiles if value >= 75.0) * 100.0 / len(placement_percentiles),
+                    sum(1 for value in placement_percentiles if value >= 75.0)
+                    * 100.0
+                    / len(placement_percentiles),
                     2,
                 )
                 if placement_percentiles
@@ -2567,25 +3347,33 @@ class DashboardRepository:
                 "median_placement_percentile": placement_p50,
                 "placement_percentile_p25": placement_p25,
                 "placement_percentile_p75": placement_p75,
-                "placement_percentile_iqr": round(placement_p75 - placement_p25, 2)
-                if placement_p25 is not None and placement_p75 is not None
-                else None,
+                "placement_percentile_iqr": (
+                    round(placement_p75 - placement_p25, 2)
+                    if placement_p25 is not None and placement_p75 is not None
+                    else None
+                ),
                 "top_25_finish_rate_pct": top_25_finish_rate_pct,
                 "valid_placement_percentile_count": len(placement_percentiles),
                 "median_cardmarket_deck_price_eur": price_p50,
                 "cardmarket_deck_price_p25_eur": price_p25,
                 "cardmarket_deck_price_p75_eur": price_p75,
-                "cardmarket_deck_price_iqr_eur": round(price_p75 - price_p25, 2)
-                if price_p25 is not None and price_p75 is not None
-                else None,
+                "cardmarket_deck_price_iqr_eur": (
+                    round(price_p75 - price_p25, 2)
+                    if price_p25 is not None and price_p75 is not None
+                    else None
+                ),
                 "priced_deck_count": len(known_prices),
                 "recent_30d_result_count": int(stats["recent_30d_result_count"]),
-                "recent_30d_result_share_pct": round(
-                    int(stats["recent_30d_result_count"]) * 100.0 / int(stats["result_count"]),
-                    2,
-                )
-                if int(stats["result_count"]) > 0 and recent_cutoff_date is not None
-                else None,
+                "recent_30d_result_share_pct": (
+                    round(
+                        int(stats["recent_30d_result_count"])
+                        * 100.0
+                        / int(stats["result_count"]),
+                        2,
+                    )
+                    if int(stats["result_count"]) > 0 and recent_cutoff_date is not None
+                    else None
+                ),
             }
         return distribution_metrics
 
@@ -2596,7 +3384,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> dict[str, dict[str, float]]:
-        normalized_deck_names = sorted({deck_name.strip() for deck_name in deck_names if deck_name.strip()})
+        normalized_deck_names = sorted(
+            {deck_name.strip() for deck_name in deck_names if deck_name.strip()}
+        )
         if not normalized_deck_names:
             return {}
 
@@ -2645,7 +3435,8 @@ class DashboardRepository:
             FROM per_deck_side_cards
             ORDER BY deck_name ASC, deck_site_id ASC, card_name ASC
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + tuple(normalized_deck_names),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + tuple(normalized_deck_names),
         )
 
         deck_ids_by_name: dict[str, set[int]] = defaultdict(set)
@@ -2712,29 +3503,53 @@ class DashboardRepository:
                 side_total = float(side_metrics["total"])
                 if side_total <= 0:
                     continue
-                total_non_engine_share += float(side_metrics["non_engine_total"]) * 100.0 / side_total
-                total_handtrap_share += float(side_metrics["handtrap"]) * 100.0 / side_total
-                total_boardbreaker_share += float(side_metrics["boardbreaker"]) * 100.0 / side_total
-                total_other_share += float(side_metrics["non_engine_other"]) * 100.0 / side_total
+                total_non_engine_share += (
+                    float(side_metrics["non_engine_total"]) * 100.0 / side_total
+                )
+                total_handtrap_share += (
+                    float(side_metrics["handtrap"]) * 100.0 / side_total
+                )
+                total_boardbreaker_share += (
+                    float(side_metrics["boardbreaker"]) * 100.0 / side_total
+                )
+                total_other_share += (
+                    float(side_metrics["non_engine_other"]) * 100.0 / side_total
+                )
 
             profile_averages[deck_name] = {
-                "average_side_non_engine_share_pct": round(total_non_engine_share / deck_count, 2),
-                "average_side_handtrap_share_pct": round(total_handtrap_share / deck_count, 2),
-                "average_side_boardbreaker_share_pct": round(total_boardbreaker_share / deck_count, 2),
-                "average_side_non_engine_other_share_pct": round(total_other_share / deck_count, 2),
+                "average_side_non_engine_share_pct": round(
+                    total_non_engine_share / deck_count, 2
+                ),
+                "average_side_handtrap_share_pct": round(
+                    total_handtrap_share / deck_count, 2
+                ),
+                "average_side_boardbreaker_share_pct": round(
+                    total_boardbreaker_share / deck_count, 2
+                ),
+                "average_side_non_engine_other_share_pct": round(
+                    total_other_share / deck_count, 2
+                ),
             }
         return profile_averages
 
-    def _placement_percentile_value(self, *, participants_count: Any, placement_sort_value: Any) -> float | None:
+    def _placement_percentile_value(
+        self, *, participants_count: Any, placement_sort_value: Any
+    ) -> float | None:
         if participants_count is None or placement_sort_value is None:
             return None
         normalized_participants_count = int(participants_count)
         normalized_placement_sort_value = int(placement_sort_value)
         if normalized_participants_count <= 0 or normalized_placement_sort_value <= 0:
             return None
-        return (normalized_participants_count - normalized_placement_sort_value + 1) * 100.0 / normalized_participants_count
+        return (
+            (normalized_participants_count - normalized_placement_sort_value + 1)
+            * 100.0
+            / normalized_participants_count
+        )
 
-    def _interpolated_quantile(self, values: list[float], quantile: float) -> float | None:
+    def _interpolated_quantile(
+        self, values: list[float], quantile: float
+    ) -> float | None:
         if not values:
             return None
         if len(values) == 1:
@@ -2746,7 +3561,9 @@ class DashboardRepository:
         upper_index = min(lower_index + 1, len(values) - 1)
         lower_value = float(values[lower_index])
         upper_value = float(values[upper_index])
-        interpolated_value = lower_value + (upper_value - lower_value) * (position - lower_index)
+        interpolated_value = lower_value + (upper_value - lower_value) * (
+            position - lower_index
+        )
         return round(interpolated_value, 2)
 
     def _get_deck_name_main_component_averages(
@@ -2756,7 +3573,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> dict[str, dict[str, float]]:
-        normalized_deck_names = sorted({deck_name.strip() for deck_name in deck_names if deck_name.strip()})
+        normalized_deck_names = sorted(
+            {deck_name.strip() for deck_name in deck_names if deck_name.strip()}
+        )
         if not normalized_deck_names:
             return {}
 
@@ -2807,7 +3626,8 @@ class DashboardRepository:
             FROM per_deck_main_cards
             ORDER BY deck_name ASC, deck_site_id ASC, card_name ASC
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + tuple(normalized_deck_names),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + tuple(normalized_deck_names),
         )
 
         deck_component_sums: dict[str, dict[str, float]] = defaultdict(
@@ -2852,9 +3672,15 @@ class DashboardRepository:
                 }
                 continue
             component_averages[deck_name] = {
-                "average_engine_card_total": round(totals["engine_total"] / deck_count, 2),
-                "average_handtrap_card_total": round(totals["handtrap_total"] / deck_count, 2),
-                "average_boardbreaker_card_total": round(totals["boardbreaker_total"] / deck_count, 2),
+                "average_engine_card_total": round(
+                    totals["engine_total"] / deck_count, 2
+                ),
+                "average_handtrap_card_total": round(
+                    totals["handtrap_total"] / deck_count, 2
+                ),
+                "average_boardbreaker_card_total": round(
+                    totals["boardbreaker_total"] / deck_count, 2
+                ),
             }
         return component_averages
 
@@ -2894,9 +3720,12 @@ class DashboardRepository:
         race: Any,
         effect_text: Any,
     ) -> tuple[str, str, str | None]:
-        normalized_archetype = str(card_archetype).strip().lower() if card_archetype is not None else ""
+        normalized_archetype = (
+            str(card_archetype).strip().lower() if card_archetype is not None else ""
+        )
         if normalized_archetype and (
-            normalized_deck_name.find(normalized_archetype) >= 0 or normalized_archetype.find(normalized_deck_name) >= 0
+            normalized_deck_name.find(normalized_archetype) >= 0
+            or normalized_archetype.find(normalized_deck_name) >= 0
         ):
             return (str(card_archetype), "main_engine", None)
 
@@ -2926,8 +3755,12 @@ class DashboardRepository:
         }
         return ranks.get(component_type, 99)
 
-    def _format_detailed_component_label(self, component_name: Any, component_type: Any) -> str | None:
-        normalized_component_type = str(component_type) if component_type is not None else ""
+    def _format_detailed_component_label(
+        self, component_name: Any, component_type: Any
+    ) -> str | None:
+        normalized_component_type = (
+            str(component_type) if component_type is not None else ""
+        )
         if normalized_component_type in {"main_engine", "rest_engine"}:
             return "Engine"
         if normalized_component_type in {
@@ -2974,9 +3807,15 @@ class DashboardRepository:
         end_date: date | str | None = None,
     ) -> list[sqlite3.Row]:
         if (deck_site_id is None) == (deck_name is None):
-            raise ValueError("Exactly one of deck_site_id or deck_name must be provided.")
+            raise ValueError(
+                "Exactly one of deck_site_id or deck_name must be provided."
+            )
 
-        selection_sql = "WHERE deck_site_id = ?" if deck_site_id is not None else "WHERE deck_name = ?"
+        selection_sql = (
+            "WHERE deck_site_id = ?"
+            if deck_site_id is not None
+            else "WHERE deck_name = ?"
+        )
         selection_value: Any = deck_site_id if deck_site_id is not None else deck_name
 
         return self._fetch_all(
@@ -3038,10 +3877,13 @@ class DashboardRepository:
                 END,
                 card_name ASC
             """,
-            self._non_engine_classification_parameters(start_date, end_date) + (selection_value,),
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (selection_value,),
         )
 
-    def _build_deck_analysis_totals(self, rows: list[sqlite3.Row]) -> dict[int, dict[str, Any]]:
+    def _build_deck_analysis_totals(
+        self, rows: list[sqlite3.Row]
+    ) -> dict[int, dict[str, Any]]:
         analyses: dict[int, dict[str, Any]] = {}
         for row in rows:
             deck_site_id = int(row["deck_site_id"])
@@ -3049,7 +3891,9 @@ class DashboardRepository:
             section = str(row["section"])
             quantity = float(row["quantity"])
             total_cardmarket_cost_eur = (
-                float(row["total_cardmarket_cost_eur"]) if row["total_cardmarket_cost_eur"] is not None else 0.0
+                float(row["total_cardmarket_cost_eur"])
+                if row["total_cardmarket_cost_eur"] is not None
+                else 0.0
             )
             analysis = analyses.setdefault(
                 deck_site_id,
@@ -3160,26 +4004,44 @@ class DashboardRepository:
             "side_non_engine_copies": round(float(side_totals["non_engine_total"]), 2),
             "side_handtrap_copies": round(float(side_totals["handtrap"]), 2),
             "side_boardbreaker_copies": round(float(side_totals["boardbreaker"]), 2),
-            "side_non_engine_other_copies": round(float(side_totals["non_engine_other"]), 2),
+            "side_non_engine_other_copies": round(
+                float(side_totals["non_engine_other"]), 2
+            ),
             "main_engine_share_pct": pct(float(main_totals["engine"]), main_total),
-            "main_non_engine_share_pct": pct(float(main_totals["non_engine_total"]), main_total),
-            "side_non_engine_share_pct": pct(float(side_totals["non_engine_total"]), side_total),
+            "main_non_engine_share_pct": pct(
+                float(main_totals["non_engine_total"]), main_total
+            ),
+            "side_non_engine_share_pct": pct(
+                float(side_totals["non_engine_total"]), side_total
+            ),
             "side_handtrap_share_pct": pct(float(side_totals["handtrap"]), side_total),
-            "side_boardbreaker_share_pct": pct(float(side_totals["boardbreaker"]), side_total),
-            "side_non_engine_other_share_pct": pct(float(side_totals["non_engine_other"]), side_total),
+            "side_boardbreaker_share_pct": pct(
+                float(side_totals["boardbreaker"]), side_total
+            ),
+            "side_non_engine_other_share_pct": pct(
+                float(side_totals["non_engine_other"]), side_total
+            ),
             "main_cardmarket_cost_eur": main_cardmarket_cost_eur,
             "extra_cardmarket_cost_eur": extra_cardmarket_cost_eur,
             "side_cardmarket_cost_eur": side_cardmarket_cost_eur,
-            "main_side_cardmarket_cost_eur": round(main_cardmarket_cost_eur + side_cardmarket_cost_eur, 2),
+            "main_side_cardmarket_cost_eur": round(
+                main_cardmarket_cost_eur + side_cardmarket_cost_eur, 2
+            ),
             "engine_cardmarket_cost_eur": round(float(role_costs["engine"]), 2),
             "handtrap_cardmarket_cost_eur": round(float(role_costs["handtrap"]), 2),
-            "boardbreaker_cardmarket_cost_eur": round(float(role_costs["boardbreaker"]), 2),
-            "non_engine_other_cardmarket_cost_eur": round(float(role_costs["non_engine_other"]), 2),
+            "boardbreaker_cardmarket_cost_eur": round(
+                float(role_costs["boardbreaker"]), 2
+            ),
+            "non_engine_other_cardmarket_cost_eur": round(
+                float(role_costs["non_engine_other"]), 2
+            ),
             "main_one_of_count": int(analysis["main_copy_counts"]["one_of"]),
             "main_two_of_count": int(analysis["main_copy_counts"]["two_of"]),
             "main_three_of_count": int(analysis["main_copy_counts"]["three_of"]),
             "main_archetypal_share_pct": pct(float(main_totals["engine"]), main_total),
-            "main_generic_share_pct": pct(float(main_totals["non_engine_total"]), main_total),
+            "main_generic_share_pct": pct(
+                float(main_totals["non_engine_total"]), main_total
+            ),
         }
 
     def _get_monthly_deck_section_role_totals(
@@ -3298,7 +4160,9 @@ class DashboardRepository:
         start_date: date | str | None = None,
         end_date: date | str | None = None,
     ) -> list[sqlite3.Row]:
-        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(start_date, end_date)
+        cte_sql, cte_parameters = self._deck_summaries_with_prices_cte(
+            start_date, end_date
+        )
         return self._fetch_all(
             f"""
             WITH {cte_sql}
@@ -3314,13 +4178,17 @@ class DashboardRepository:
             cte_parameters,
         )
 
-    def _fetch_all(self, query: str, parameters: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
+    def _fetch_all(
+        self, query: str, parameters: tuple[Any, ...] = ()
+    ) -> list[sqlite3.Row]:
         if not self.database_path.exists():
             return []
         with self._connect() as connection:
             return connection.execute(query, parameters).fetchall()
 
-    def _fetch_one(self, query: str, parameters: tuple[Any, ...] = ()) -> sqlite3.Row | None:
+    def _fetch_one(
+        self, query: str, parameters: tuple[Any, ...] = ()
+    ) -> sqlite3.Row | None:
         if not self.database_path.exists():
             return None
         with self._connect() as connection:
