@@ -670,6 +670,16 @@ class DashboardRepository:
                     "deck_count": deck_count,
                     "tournament_count": int(row.get("tournament_count") or 0),
                     "player_count": int(row.get("player_count") or 0),
+                    "average_placement": (
+                        float(row.get("average_placement"))
+                        if row.get("average_placement") is not None
+                        else None
+                    ),
+                    "median_placement": (
+                        float(row.get("median_placement"))
+                        if row.get("median_placement") is not None
+                        else None
+                    ),
                     "meta_share_pct": float(row.get("meta_share_pct") or 0.0),
                     "tournament_coverage_pct": float(
                         row.get("tournament_coverage_pct") or 0.0
@@ -690,6 +700,31 @@ class DashboardRepository:
                     "top_25_finish_rate_pct": (
                         float(row.get("top_25_finish_rate_pct"))
                         if row.get("top_25_finish_rate_pct") is not None
+                        else None
+                    ),
+                    "winner_rate_pct": (
+                        float(row.get("winner_rate_pct"))
+                        if row.get("winner_rate_pct") is not None
+                        else None
+                    ),
+                    "runner_up_rate_pct": (
+                        float(row.get("runner_up_rate_pct"))
+                        if row.get("runner_up_rate_pct") is not None
+                        else None
+                    ),
+                    "top_4_finish_rate_pct": (
+                        float(row.get("top_4_finish_rate_pct"))
+                        if row.get("top_4_finish_rate_pct") is not None
+                        else None
+                    ),
+                    "top_8_finish_rate_pct": (
+                        float(row.get("top_8_finish_rate_pct"))
+                        if row.get("top_8_finish_rate_pct") is not None
+                        else None
+                    ),
+                    "top_16_finish_rate_pct": (
+                        float(row.get("top_16_finish_rate_pct"))
+                        if row.get("top_16_finish_rate_pct") is not None
                         else None
                     ),
                     "average_cardmarket_deck_price_eur": (
@@ -947,6 +982,7 @@ class DashboardRepository:
         trend_stats: dict[tuple[str, str], dict[str, Any]] = defaultdict(
             lambda: {
                 "deck_count": 0,
+                "placement_values": [],
                 "placement_percentiles": [],
                 "known_prices": [],
             }
@@ -959,6 +995,11 @@ class DashboardRepository:
             month_start = str(row["month_start"])
             stats = trend_stats[(deck_name, month_start)]
             stats["deck_count"] += 1
+
+            if row["placement_sort_value"] is not None:
+                placement_value = float(row["placement_sort_value"])
+                if placement_value > 0:
+                    stats["placement_values"].append(placement_value)
 
             placement_percentile = self._placement_percentile_value(
                 participants_count=row["participants_count"],
@@ -981,10 +1022,14 @@ class DashboardRepository:
             trend_stats.items(),
             key=lambda item: (deck_rank_by_name.get(item[0][0], 9_999), item[0][1]),
         ):
+            placement_values = sorted(
+                float(value) for value in stats["placement_values"]
+            )
             placement_percentiles = sorted(
                 float(value) for value in stats["placement_percentiles"]
             )
             known_prices = sorted(float(value) for value in stats["known_prices"])
+            placement_value_p50 = self._interpolated_quantile(placement_values, 0.50)
             placement_p25 = self._interpolated_quantile(placement_percentiles, 0.25)
             placement_p50 = self._interpolated_quantile(placement_percentiles, 0.50)
             placement_p75 = self._interpolated_quantile(placement_percentiles, 0.75)
@@ -1006,6 +1051,12 @@ class DashboardRepository:
                         if month_total_deck_count > 0
                         else None
                     ),
+                    "average_placement": (
+                        round(sum(placement_values) / len(placement_values), 2)
+                        if placement_values
+                        else None
+                    ),
+                    "median_placement": placement_value_p50,
                     "average_placement_percentile": (
                         round(
                             sum(placement_percentiles) / len(placement_percentiles), 2
@@ -2094,6 +2145,7 @@ class DashboardRepository:
                 SELECT
                     dc.deck_site_id,
                     dc.section,
+                    dc.card_passcode AS card_passcode,
                     COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT)) AS card_name,
                     MIN(c.image_url_small) AS image_url_small,
                     MAX(c.card_archetype) AS card_archetype,
@@ -2115,6 +2167,7 @@ class DashboardRepository:
                 SELECT
                     pdc.section,
                     pdc.card_name,
+                    MIN(pdc.card_passcode) AS card_passcode,
                     MIN(pdc.image_url_small) AS image_url_small,
                     MAX(pdc.card_archetype) AS card_archetype,
                     MAX(pdc.card_type) AS card_type,
@@ -2133,7 +2186,9 @@ class DashboardRepository:
             SELECT
                 cs.section,
                 cs.card_name,
+                MIN(cs.card_passcode) AS card_passcode,
                 cs.image_url_small,
+                cs.card_archetype,
                 cs.card_type,
                 cs.card_race,
                 cs.frame_type,
@@ -2209,6 +2264,13 @@ class DashboardRepository:
                 {
                     "Bild": row["image_url_small"],
                     "Karte": row["card_name"],
+                    "card_passcode": (
+                        int(row["card_passcode"])
+                        if row["card_passcode"] is not None
+                        else None
+                    ),
+                    "Archetyp": row["card_archetype"],
+                    "Kartentyp": row["card_type"],
                     "Klasse": component_class,
                     "In Decks": int(row["deck_count"]),
                     "Anteil %": float(row["inclusion_rate_pct"]),
@@ -2265,6 +2327,369 @@ class DashboardRepository:
             LIMIT ?
             """,
             cte_parameters + (deck_name, limit),
+        )
+        return [dict(row) for row in rows]
+
+    def search_cards(
+        self,
+        query: str,
+        *,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        normalized_query = query.strip()
+        if not normalized_query:
+            return []
+
+        if normalized_query.isdigit():
+            rows = self._fetch_all(
+                """
+                SELECT
+                    card_passcode,
+                    canonical_name,
+                    card_archetype,
+                    card_type,
+                    frame_type,
+                    image_url_small,
+                    cardmarket_price_eur
+                FROM cards
+                WHERE card_passcode = ?
+                ORDER BY canonical_name ASC
+                LIMIT ?
+                """,
+                (int(normalized_query), limit),
+            )
+            return [
+                {
+                    "card_passcode": int(row["card_passcode"]),
+                    "card_name": row["canonical_name"],
+                    "card_archetype": row["card_archetype"],
+                    "card_type": row["card_type"],
+                    "frame_type": row["frame_type"],
+                    "image_url_small": row["image_url_small"],
+                    "cardmarket_price_eur": (
+                        float(row["cardmarket_price_eur"])
+                        if row["cardmarket_price_eur"] is not None
+                        else None
+                    ),
+                }
+                for row in rows
+                if row["canonical_name"] is not None
+            ]
+
+        like_query = f"%{normalized_query}%"
+        rows = self._fetch_all(
+            """
+            SELECT
+                MIN(card_passcode) AS card_passcode,
+                canonical_name,
+                MAX(card_archetype) AS card_archetype,
+                MAX(card_type) AS card_type,
+                MAX(frame_type) AS frame_type,
+                MAX(image_url_small) AS image_url_small,
+                MAX(cardmarket_price_eur) AS cardmarket_price_eur
+            FROM cards
+            WHERE canonical_name IS NOT NULL
+              AND LOWER(canonical_name) LIKE LOWER(?)
+            GROUP BY canonical_name
+            ORDER BY
+                CASE
+                    WHEN LOWER(canonical_name) = LOWER(?) THEN 0
+                    WHEN LOWER(canonical_name) LIKE LOWER(?) THEN 1
+                    ELSE 2
+                END,
+                canonical_name ASC
+            LIMIT ?
+            """,
+            (like_query, normalized_query, f"{normalized_query}%", limit),
+        )
+        return [
+            {
+                "card_passcode": int(row["card_passcode"]),
+                "card_name": row["canonical_name"],
+                "card_archetype": row["card_archetype"],
+                "card_type": row["card_type"],
+                "frame_type": row["frame_type"],
+                "image_url_small": row["image_url_small"],
+                "cardmarket_price_eur": (
+                    float(row["cardmarket_price_eur"])
+                    if row["cardmarket_price_eur"] is not None
+                    else None
+                ),
+            }
+            for row in rows
+        ]
+
+    def build_deck_group_starter(
+        self,
+        deck_name: str,
+        *,
+        start_date: date | str | None = None,
+        end_date: date | str | None = None,
+        main_target: int = 40,
+        extra_target: int = 15,
+        side_target: int = 15,
+    ) -> dict[str, list[dict[str, Any]]]:
+        rows = self._fetch_all(
+            f"""
+            {self._non_engine_classification_cte(start_date, end_date)}
+            , matching_decks AS (
+                SELECT deck_site_id
+                FROM filtered_decks
+                WHERE deck_name = ?
+            ),
+            deck_totals AS (
+                SELECT COUNT(*) AS total_decks
+                FROM matching_decks
+            ),
+            per_deck_cards AS (
+                SELECT
+                    dc.deck_site_id,
+                    dc.section,
+                    COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT)) AS card_name,
+                    MIN(dc.card_passcode) AS card_passcode,
+                    MIN(c.image_url_small) AS image_url_small,
+                    MAX(c.card_archetype) AS card_archetype,
+                    MAX(c.card_type) AS card_type,
+                    SUM(dc.quantity) AS copies_in_deck
+                FROM deck_cards dc
+                JOIN matching_decks md ON md.deck_site_id = dc.deck_site_id
+                LEFT JOIN cards c ON c.card_passcode = dc.card_passcode
+                WHERE dc.section IN ('main', 'extra', 'side')
+                GROUP BY
+                    dc.deck_site_id,
+                    dc.section,
+                    COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT))
+            ),
+            card_stats AS (
+                SELECT
+                    pdc.section,
+                    pdc.card_name,
+                    MIN(pdc.card_passcode) AS card_passcode,
+                    MIN(pdc.image_url_small) AS image_url_small,
+                    MAX(pdc.card_archetype) AS card_archetype,
+                    MAX(pdc.card_type) AS card_type,
+                    COUNT(*) AS deck_count,
+                    SUM(pdc.copies_in_deck) AS total_copies,
+                    AVG(pdc.copies_in_deck * 1.0) AS average_copies_when_present
+                FROM per_deck_cards pdc
+                GROUP BY
+                    pdc.section,
+                    pdc.card_name
+            )
+            SELECT
+                cs.section,
+                cs.card_name,
+                cs.card_passcode,
+                cs.image_url_small,
+                cs.card_archetype,
+                cs.card_type,
+                cs.deck_count,
+                cs.total_copies,
+                ROUND(cs.deck_count * 100.0 / dt.total_decks, 1) AS inclusion_rate_pct,
+                ROUND(cs.total_copies * 1.0 / dt.total_decks, 2) AS average_copies_per_deck,
+                ROUND(cs.average_copies_when_present, 2) AS average_copies_when_present
+            FROM card_stats cs
+            CROSS JOIN deck_totals dt
+            WHERE dt.total_decks > 0
+            ORDER BY
+                CASE cs.section
+                    WHEN 'main' THEN 1
+                    WHEN 'extra' THEN 2
+                    WHEN 'side' THEN 3
+                    ELSE 4
+                END,
+                inclusion_rate_pct DESC,
+                average_copies_per_deck DESC,
+                cs.card_name ASC
+            """,
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (deck_name,),
+        )
+
+        grouped_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            grouped_rows[str(row["section"])].append(
+                {
+                    "Bild": row["image_url_small"],
+                    "Karte": row["card_name"],
+                    "card_passcode": (
+                        int(row["card_passcode"])
+                        if row["card_passcode"] is not None
+                        else None
+                    ),
+                    "Archetyp": row["card_archetype"],
+                    "Kartentyp": row["card_type"],
+                    "In Decks": int(row["deck_count"]),
+                    "Anteil %": float(row["inclusion_rate_pct"]),
+                    "Ø Kopien / Deck": float(row["average_copies_per_deck"]),
+                    "Ø Kopien bei Nutzung": float(row["average_copies_when_present"]),
+                    "Ø Cardmarket €": None,
+                }
+            )
+
+        def _build_section(
+            section_rows: list[dict[str, Any]],
+            target_size: int,
+            *,
+            allow_overflow: bool = False,
+        ) -> list[dict[str, Any]]:
+            selected: list[dict[str, Any]] = []
+            running_total = 0
+            for row in section_rows:
+                average_copies = float(row.get("Ø Kopien / Deck") or 0.0)
+                inclusion_pct = float(row.get("Anteil %") or 0.0)
+                if average_copies <= 0 or inclusion_pct <= 0:
+                    continue
+                quantity = max(1, min(3, int(round(average_copies))))
+                if not allow_overflow and running_total + quantity > target_size:
+                    remaining = target_size - running_total
+                    if remaining <= 0:
+                        break
+                    quantity = min(quantity, remaining)
+                if quantity <= 0:
+                    continue
+
+                selected.append(
+                    {
+                        "card_name": row["Karte"],
+                        "card_passcode": None,
+                        "quantity": quantity,
+                        "card_archetype": row.get("Archetyp"),
+                        "card_type": row.get("Kartentyp"),
+                        "inclusion_rate_pct": inclusion_pct,
+                        "average_copies_per_deck": average_copies,
+                        "image_url_small": row.get("Bild"),
+                        "cardmarket_price_eur": row.get("Ø Cardmarket €"),
+                    }
+                )
+                running_total += quantity
+                if running_total >= target_size:
+                    break
+            return selected
+
+        return {
+            "main": _build_section(grouped_rows.get("main", []), main_target),
+            "extra": _build_section(grouped_rows.get("extra", []), extra_target),
+            "side": _build_section(grouped_rows.get("side", []), side_target),
+        }
+
+    def list_underused_cards_for_deck_group(
+        self,
+        deck_name: str,
+        *,
+        start_date: date | str | None = None,
+        end_date: date | str | None = None,
+        limit: int = 40,
+    ) -> list[dict[str, Any]]:
+        rows = self._fetch_all(
+            f"""
+            {self._non_engine_classification_cte(start_date, end_date)}
+            , matching_decks AS (
+                SELECT
+                    fd.deck_site_id,
+                    fd.deck_name
+                FROM filtered_decks fd
+                WHERE fd.deck_name = ?
+            ),
+            deck_group_total AS (
+                SELECT COUNT(*) AS total_decks
+                FROM matching_decks
+            ),
+            per_deck_cards AS (
+                SELECT
+                    md.deck_site_id,
+                    dc.section,
+                    COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT)) AS card_name,
+                    MIN(dc.card_passcode) AS card_passcode,
+                    SUM(dc.quantity) AS copies_in_deck,
+                    MAX(c.image_url_small) AS image_url_small,
+                    MAX(c.card_type) AS card_type,
+                    MAX(c.frame_type) AS frame_type,
+                    MAX(c.card_race) AS card_race,
+                    MAX(c.card_archetype) AS card_archetype,
+                    MAX(c.cardmarket_price_eur) AS cardmarket_price_eur,
+                    MAX(CASE WHEN c.effect_text IS NOT NULL AND LOWER(TRIM(c.effect_text)) NOT IN ('none', 'null', 'n/a', 'na') THEN c.effect_text END) AS effect_text,
+                    dsv.participants_count,
+                    dsv.placement_sort_value
+                FROM matching_decks md
+                JOIN deck_cards dc ON dc.deck_site_id = md.deck_site_id
+                JOIN dashboard_deck_summary_v dsv ON dsv.deck_site_id = md.deck_site_id
+                LEFT JOIN cards c ON c.card_passcode = dc.card_passcode
+                WHERE dc.section IN ('main', 'side')
+                GROUP BY
+                    md.deck_site_id,
+                    dc.section,
+                    COALESCE(NULLIF(dc.card_name, ''), c.canonical_name, CAST(dc.card_passcode AS TEXT)),
+                    dsv.participants_count,
+                    dsv.placement_sort_value
+            ),
+            card_aggregates AS (
+                SELECT
+                    pdc.section,
+                    pdc.card_name,
+                    MIN(pdc.card_passcode) AS card_passcode,
+                    MAX(pdc.image_url_small) AS image_url_small,
+                    MAX(pdc.card_type) AS card_type,
+                    MAX(pdc.frame_type) AS frame_type,
+                    MAX(pdc.card_race) AS card_race,
+                    MAX(pdc.card_archetype) AS card_archetype,
+                    MAX(pdc.cardmarket_price_eur) AS cardmarket_price_eur,
+                    MAX(pdc.effect_text) AS effect_text,
+                    COUNT(*) AS decks_with_card,
+                    AVG(pdc.copies_in_deck * 1.0) AS average_copies_when_present,
+                    AVG(
+                        CASE
+                            WHEN pdc.participants_count > 0 AND pdc.placement_sort_value > 0
+                            THEN (pdc.participants_count - pdc.placement_sort_value + 1) * 100.0 / pdc.participants_count
+                        END
+                    ) AS average_placement_percentile,
+                    AVG(
+                        CASE
+                            WHEN pdc.participants_count > 0 AND pdc.placement_sort_value > 0
+                                 AND (pdc.participants_count - pdc.placement_sort_value + 1) * 100.0 / pdc.participants_count >= 75.0
+                            THEN 1.0
+                            WHEN pdc.participants_count > 0 AND pdc.placement_sort_value > 0
+                            THEN 0.0
+                        END
+                    ) AS top_25_finish_rate
+                FROM per_deck_cards pdc
+                GROUP BY pdc.section, pdc.card_name
+            )
+            SELECT
+                ca.section,
+                ca.card_name,
+                ca.card_passcode,
+                ca.image_url_small,
+                ca.card_type,
+                ca.frame_type,
+                ca.card_race,
+                ca.card_archetype,
+                ca.effect_text,
+                ROUND(ca.cardmarket_price_eur, 2) AS cardmarket_price_eur,
+                ca.decks_with_card,
+                dgt.total_decks AS deck_group_size,
+                ROUND(ca.decks_with_card * 100.0 / dgt.total_decks, 2) AS inclusion_rate_pct,
+                ROUND(ca.average_copies_when_present, 2) AS average_copies_when_present,
+                ROUND(ca.average_placement_percentile, 2) AS average_placement_percentile,
+                ROUND(ca.top_25_finish_rate * 100.0, 2) AS top_25_finish_rate_pct,
+                COALESCE(cc.classification, 'engine') AS classification
+            FROM card_aggregates ca
+            CROSS JOIN deck_group_total dgt
+            LEFT JOIN classified_cards cc
+              ON cc.section = ca.section
+             AND cc.card_name = ca.card_name
+            WHERE dgt.total_decks > 0
+              AND ca.decks_with_card > 0
+              AND ca.decks_with_card < dgt.total_decks
+            ORDER BY
+                inclusion_rate_pct ASC,
+                average_placement_percentile DESC,
+                top_25_finish_rate_pct DESC,
+                ca.card_name ASC
+            LIMIT ?
+            """,
+            self._non_engine_classification_parameters(start_date, end_date)
+            + (deck_name, limit),
         )
         return [dict(row) for row in rows]
 
@@ -3157,11 +3582,17 @@ class DashboardRepository:
             "average_side_non_engine_other_share_pct": 0.0,
         }
         distribution_defaults = {
+            "median_placement": None,
             "average_placement_percentile": None,
             "median_placement_percentile": None,
             "placement_percentile_p25": None,
             "placement_percentile_p75": None,
             "placement_percentile_iqr": None,
+            "winner_rate_pct": None,
+            "runner_up_rate_pct": None,
+            "top_4_finish_rate_pct": None,
+            "top_8_finish_rate_pct": None,
+            "top_16_finish_rate_pct": None,
             "top_25_finish_rate_pct": None,
             "valid_placement_percentile_count": 0,
             "median_cardmarket_deck_price_eur": None,
@@ -3279,6 +3710,7 @@ class DashboardRepository:
         )
         deck_stats: dict[str, dict[str, Any]] = defaultdict(
             lambda: {
+                "placement_values": [],
                 "placement_percentiles": [],
                 "known_prices": [],
                 "result_count": 0,
@@ -3290,6 +3722,11 @@ class DashboardRepository:
             deck_name = str(row["deck_name"])
             stats = deck_stats[deck_name]
             stats["result_count"] += 1
+
+            if row["placement_sort_value"] is not None:
+                placement_value = float(row["placement_sort_value"])
+                if placement_value > 0:
+                    stats["placement_values"].append(placement_value)
 
             placement_percentile = self._placement_percentile_value(
                 participants_count=row["participants_count"],
@@ -3315,10 +3752,14 @@ class DashboardRepository:
                 distribution_metrics[deck_name] = {}
                 continue
 
+            placement_values = sorted(
+                float(value) for value in stats["placement_values"]
+            )
             placement_percentiles = sorted(
                 float(value) for value in stats["placement_percentiles"]
             )
             known_prices = sorted(float(value) for value in stats["known_prices"])
+            placement_value_p50 = self._interpolated_quantile(placement_values, 0.50)
             placement_p25 = self._interpolated_quantile(placement_percentiles, 0.25)
             placement_p50 = self._interpolated_quantile(placement_percentiles, 0.50)
             placement_p75 = self._interpolated_quantile(placement_percentiles, 0.75)
@@ -3343,6 +3784,7 @@ class DashboardRepository:
             )
 
             distribution_metrics[deck_name] = {
+                "median_placement": placement_value_p50,
                 "average_placement_percentile": average_placement_percentile,
                 "median_placement_percentile": placement_p50,
                 "placement_percentile_p25": placement_p25,
@@ -3350,6 +3792,56 @@ class DashboardRepository:
                 "placement_percentile_iqr": (
                     round(placement_p75 - placement_p25, 2)
                     if placement_p25 is not None and placement_p75 is not None
+                    else None
+                ),
+                "winner_rate_pct": (
+                    round(
+                        sum(1 for value in placement_values if value <= 1.0)
+                        * 100.0
+                        / len(placement_values),
+                        2,
+                    )
+                    if placement_values
+                    else None
+                ),
+                "runner_up_rate_pct": (
+                    round(
+                        sum(1 for value in placement_values if value <= 2.0)
+                        * 100.0
+                        / len(placement_values),
+                        2,
+                    )
+                    if placement_values
+                    else None
+                ),
+                "top_4_finish_rate_pct": (
+                    round(
+                        sum(1 for value in placement_values if value <= 4.0)
+                        * 100.0
+                        / len(placement_values),
+                        2,
+                    )
+                    if placement_values
+                    else None
+                ),
+                "top_8_finish_rate_pct": (
+                    round(
+                        sum(1 for value in placement_values if value <= 8.0)
+                        * 100.0
+                        / len(placement_values),
+                        2,
+                    )
+                    if placement_values
+                    else None
+                ),
+                "top_16_finish_rate_pct": (
+                    round(
+                        sum(1 for value in placement_values if value <= 16.0)
+                        * 100.0
+                        / len(placement_values),
+                        2,
+                    )
+                    if placement_values
                     else None
                 ),
                 "top_25_finish_rate_pct": top_25_finish_rate_pct,

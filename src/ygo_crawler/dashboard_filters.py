@@ -8,7 +8,9 @@ from .dashboard_cache import load_available_date_range
 from .dashboard_queries import DashboardRepository
 
 
-def render_dashboard_date_filter(repository: DashboardRepository) -> tuple[date | None, date | None]:
+def render_dashboard_date_filter(
+    repository: DashboardRepository,
+) -> tuple[date | None, date | None]:
     st.sidebar.header("Zeitraum")
 
     available_range = load_available_date_range(repository)
@@ -20,7 +22,9 @@ def render_dashboard_date_filter(repository: DashboardRepository) -> tuple[date 
     start_key = "dashboard_start_date"
     end_key = "dashboard_end_date"
 
-    current_start = _initialize_clamped_date_state(start_key, min_date, min_date, max_date)
+    current_start = _initialize_clamped_date_state(
+        start_key, min_date, min_date, max_date
+    )
     current_end = _initialize_clamped_date_state(end_key, max_date, min_date, max_date)
     if current_start > current_end:
         current_start, current_end = current_end, current_start
@@ -66,7 +70,9 @@ def _clamp_date(value: object, min_date: date, max_date: date) -> date:
     return candidate
 
 
-def _initialize_clamped_date_state(key: str, fallback: date, min_date: date, max_date: date) -> date:
+def _initialize_clamped_date_state(
+    key: str, fallback: date, min_date: date, max_date: date
+) -> date:
     candidate = _clamp_date(st.session_state.get(key, fallback), min_date, max_date)
     if st.session_state.get(key) != candidate:
         st.session_state[key] = candidate

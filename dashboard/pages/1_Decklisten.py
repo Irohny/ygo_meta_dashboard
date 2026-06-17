@@ -8,7 +8,6 @@ from ygo_crawler.dashboard_cache import load_deck_summaries, load_selected_deck_
 from ygo_crawler.dashboard_filters import render_dashboard_date_filter
 from ygo_crawler.dashboard_queries import DashboardRepository, resolve_dashboard_db_path
 
-
 DECK_NAME_STATE_KEY = "decklisten_selected_deck_name"
 DECK_INSTANCE_STATE_KEY = "decklisten_selected_deck_id"
 QUERY_PARAM_DECK_NAME = "deck_name"
@@ -35,8 +34,12 @@ def _query_param_int(key: str) -> int | None:
         return None
 
 
-def _drop_columns(rows: list[dict[str, object]], columns: set[str]) -> list[dict[str, object]]:
-    return [{key: value for key, value in row.items() if key not in columns} for row in rows]
+def _drop_columns(
+    rows: list[dict[str, object]], columns: set[str]
+) -> list[dict[str, object]]:
+    return [
+        {key: value for key, value in row.items() if key not in columns} for row in rows
+    ]
 
 
 def _card_table_config() -> dict[str, object]:
@@ -54,7 +57,9 @@ def _card_table_config() -> dict[str, object]:
     }
 
 
-def _sorted_card_rows(rows: list[dict[str, object]], sort_mode: str) -> list[dict[str, object]]:
+def _sorted_card_rows(
+    rows: list[dict[str, object]], sort_mode: str
+) -> list[dict[str, object]]:
     if sort_mode == "Gesamtpreis":
         return sorted(
             rows,
@@ -153,7 +158,12 @@ def _format_side_profile_value(copies: object, share_pct: object) -> str:
     return f"{_format_count(copies)} | {_format_percent(share_pct)}"
 
 
-def _render_metric(column: st.delta_generator.DeltaGenerator, label: str, value: str, delta: str | None = None) -> None:
+def _render_metric(
+    column: st.delta_generator.DeltaGenerator,
+    label: str,
+    value: str,
+    delta: str | None = None,
+) -> None:
     if delta is None:
         column.metric(label, value, border=True)
         return
@@ -175,7 +185,9 @@ def _render_metric_group(
 
         for offset in range(0, len(metrics), columns):
             metric_columns = st.columns(columns)
-            for metric_column, (label, value, delta) in zip(metric_columns, metrics[offset : offset + columns]):
+            for metric_column, (label, value, delta) in zip(
+                metric_columns, metrics[offset : offset + columns]
+            ):
                 _render_metric(metric_column, label, value, delta)
 
 
@@ -255,17 +267,25 @@ def _deck_instance_label(row: dict[str, object]) -> str:
 
 
 def _sum_component_copies(rows: list[dict[str, object]], component_type: str) -> float:
-    return sum(float(row["copies_in_section"]) for row in rows if str(row["component_type"]) == component_type)
+    return sum(
+        float(row["copies_in_section"])
+        for row in rows
+        if str(row["component_type"]) == component_type
+    )
 
 
-def _render_kpi_header(selected_deck: dict[str, object], role_metrics: dict[str, object]) -> None:
+def _render_kpi_header(
+    selected_deck: dict[str, object], role_metrics: dict[str, object]
+) -> None:
     group_deck_count = role_metrics.get("group_deck_count")
     if group_deck_count is not None:
         st.caption(
             f"Deltas zeigen die Abweichung zum Deckgruppen-Mittel im aktiven Zeitraum auf Basis von {int(group_deck_count)} Listen."
         )
     else:
-        st.caption("Deltas zeigen die Abweichung zum Deckgruppen-Mittel im aktiven Zeitraum.")
+        st.caption(
+            "Deltas zeigen die Abweichung zum Deckgruppen-Mittel im aktiven Zeitraum."
+        )
 
     top_row_col_1, top_row_col_2 = st.columns((1.05, 1.2))
     _render_metric_group(
@@ -273,8 +293,16 @@ def _render_kpi_header(selected_deck: dict[str, object], role_metrics: dict[str,
         "Turnierresultat",
         [
             ("Platzierung", str(selected_deck["placement"]), None),
-            ("Perzentil", _format_percent(selected_deck.get("placement_percentile")), None),
-            ("Teilnehmer", _format_count(selected_deck.get("participants_count")), None),
+            (
+                "Perzentil",
+                _format_percent(selected_deck.get("placement_percentile")),
+                None,
+            ),
+            (
+                "Teilnehmer",
+                _format_count(selected_deck.get("participants_count")),
+                None,
+            ),
             ("Main Slots", _format_count(role_metrics.get("main_card_total")), None),
         ],
         columns=2,
@@ -286,17 +314,23 @@ def _render_kpi_header(selected_deck: dict[str, object], role_metrics: dict[str,
             (
                 "Main Engine",
                 _format_percent(role_metrics.get("main_engine_share_pct")),
-                _format_delta_pp(role_metrics.get("delta_vs_group_main_engine_share_pct")),
+                _format_delta_pp(
+                    role_metrics.get("delta_vs_group_main_engine_share_pct")
+                ),
             ),
             (
                 "Main Non-Engine",
                 _format_percent(role_metrics.get("main_non_engine_share_pct")),
-                _format_delta_pp(role_metrics.get("delta_vs_group_main_non_engine_share_pct")),
+                _format_delta_pp(
+                    role_metrics.get("delta_vs_group_main_non_engine_share_pct")
+                ),
             ),
             (
                 "Side Non-Engine",
                 _format_percent(role_metrics.get("side_non_engine_share_pct")),
-                _format_delta_pp(role_metrics.get("delta_vs_group_side_non_engine_share_pct")),
+                _format_delta_pp(
+                    role_metrics.get("delta_vs_group_side_non_engine_share_pct")
+                ),
             ),
         ],
         columns=2,
@@ -307,10 +341,26 @@ def _render_kpi_header(selected_deck: dict[str, object], role_metrics: dict[str,
         second_row_col_1,
         "Deckkosten",
         [
-            ("Gesamt EUR", _format_eur(selected_deck.get("cardmarket_deck_price_eur")), None),
-            ("Main EUR", _format_eur(role_metrics.get("main_cardmarket_cost_eur")), None),
-            ("Extra EUR", _format_eur(role_metrics.get("extra_cardmarket_cost_eur")), None),
-            ("Side EUR", _format_eur(role_metrics.get("side_cardmarket_cost_eur")), None),
+            (
+                "Gesamt EUR",
+                _format_eur(selected_deck.get("cardmarket_deck_price_eur")),
+                None,
+            ),
+            (
+                "Main EUR",
+                _format_eur(role_metrics.get("main_cardmarket_cost_eur")),
+                None,
+            ),
+            (
+                "Extra EUR",
+                _format_eur(role_metrics.get("extra_cardmarket_cost_eur")),
+                None,
+            ),
+            (
+                "Side EUR",
+                _format_eur(role_metrics.get("side_cardmarket_cost_eur")),
+                None,
+            ),
         ],
         columns=2,
     )
@@ -324,7 +374,9 @@ def _render_kpi_header(selected_deck: dict[str, object], role_metrics: dict[str,
                     role_metrics.get("side_handtrap_copies"),
                     role_metrics.get("side_handtrap_share_pct"),
                 ),
-                _format_delta_pp(role_metrics.get("delta_vs_group_side_handtrap_share_pct")),
+                _format_delta_pp(
+                    role_metrics.get("delta_vs_group_side_handtrap_share_pct")
+                ),
             ),
             (
                 "Boardbreaker Side",
@@ -332,7 +384,9 @@ def _render_kpi_header(selected_deck: dict[str, object], role_metrics: dict[str,
                     role_metrics.get("side_boardbreaker_copies"),
                     role_metrics.get("side_boardbreaker_share_pct"),
                 ),
-                _format_delta_pp(role_metrics.get("delta_vs_group_side_boardbreaker_share_pct")),
+                _format_delta_pp(
+                    role_metrics.get("delta_vs_group_side_boardbreaker_share_pct")
+                ),
             ),
             (
                 "Weitere NE Side",
@@ -340,7 +394,9 @@ def _render_kpi_header(selected_deck: dict[str, object], role_metrics: dict[str,
                     role_metrics.get("side_non_engine_other_copies"),
                     role_metrics.get("side_non_engine_other_share_pct"),
                 ),
-                _format_delta_pp(role_metrics.get("delta_vs_group_side_non_engine_other_share_pct")),
+                _format_delta_pp(
+                    role_metrics.get("delta_vs_group_side_non_engine_other_share_pct")
+                ),
             ),
         ],
         columns=2,
@@ -351,10 +407,26 @@ def _render_kpi_header(selected_deck: dict[str, object], role_metrics: dict[str,
         role_cost_container,
         "Rollenkosten",
         [
-            ("Engine", _format_eur(role_metrics.get("engine_cardmarket_cost_eur")), None),
-            ("Handtraps", _format_eur(role_metrics.get("handtrap_cardmarket_cost_eur")), None),
-            ("Boardbreaker", _format_eur(role_metrics.get("boardbreaker_cardmarket_cost_eur")), None),
-            ("Weitere NE", _format_eur(role_metrics.get("non_engine_other_cardmarket_cost_eur")), None),
+            (
+                "Engine",
+                _format_eur(role_metrics.get("engine_cardmarket_cost_eur")),
+                None,
+            ),
+            (
+                "Handtraps",
+                _format_eur(role_metrics.get("handtrap_cardmarket_cost_eur")),
+                None,
+            ),
+            (
+                "Boardbreaker",
+                _format_eur(role_metrics.get("boardbreaker_cardmarket_cost_eur")),
+                None,
+            ),
+            (
+                "Weitere NE",
+                _format_eur(role_metrics.get("non_engine_other_cardmarket_cost_eur")),
+                None,
+            ),
         ],
         columns=4,
         description="Rollenpreise beziehen sich auf Main und Side; das Extra Deck fliesst hier bewusst nicht ein.",
@@ -375,7 +447,9 @@ def _component_color(component_type: str, component_index: int) -> str:
     return engine_palette[component_index % len(engine_palette)]
 
 
-def _component_color_scale(rows: list[dict[str, object]]) -> tuple[list[str], list[str]]:
+def _component_color_scale(
+    rows: list[dict[str, object]],
+) -> tuple[list[str], list[str]]:
     color_range: list[str] = []
     domain: list[str] = []
     engine_index = 0
@@ -400,7 +474,9 @@ def _component_color_scale(rows: list[dict[str, object]]) -> tuple[list[str], li
 
 def _render_deck_section_share_chart(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer dieses Deck konnte keine Deckbereich-Komposition berechnet werden.")
+        st.info(
+            "Fuer dieses Deck konnte keine Deckbereich-Komposition berechnet werden."
+        )
         return
 
     chart_rows: list[dict[str, object]] = []
@@ -409,7 +485,9 @@ def _render_deck_section_share_chart(rows: list[dict[str, object]]) -> None:
         component_name = str(row["component_name"])
         chart_rows.append(
             {
-                "Deckbereich": "Main Deck" if str(row["section"]) == "main" else "Side Deck",
+                "Deckbereich": (
+                    "Main Deck" if str(row["section"]) == "main" else "Side Deck"
+                ),
                 "Baustein": component_name,
                 "Anteil %": float(row["share_pct"]),
                 "Kopien im Bereich": float(row["copies_in_section"]),
@@ -446,7 +524,11 @@ def _render_deck_section_share_chart(rows: list[dict[str, object]]) -> None:
                     {"field": "Deckbereich", "type": "nominal"},
                     {"field": "Baustein", "type": "nominal"},
                     {"field": "Anteil %", "type": "quantitative", "format": ".1f"},
-                    {"field": "Kopien im Bereich", "type": "quantitative", "format": ".0f"},
+                    {
+                        "field": "Kopien im Bereich",
+                        "type": "quantitative",
+                        "format": ".0f",
+                    },
                 ],
             },
         },
@@ -456,7 +538,9 @@ def _render_deck_section_share_chart(rows: list[dict[str, object]]) -> None:
 
 def _render_role_cost_distribution_chart(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer dieses Deck konnten keine rollenbasierten Cardmarket-Kosten berechnet werden.")
+        st.info(
+            "Fuer dieses Deck konnten keine rollenbasierten Cardmarket-Kosten berechnet werden."
+        )
         return
 
     domain, color_range = _component_color_scale(rows)
@@ -497,7 +581,11 @@ def _render_role_cost_distribution_chart(rows: list[dict[str, object]]) -> None:
                 "order": {"field": "Sortierung", "type": "quantitative"},
                 "tooltip": [
                     {"field": "Baustein", "type": "nominal"},
-                    {"field": "Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                     {"field": "Anteil %", "type": "quantitative", "format": ".1f"},
                 ],
             },
@@ -508,7 +596,9 @@ def _render_role_cost_distribution_chart(rows: list[dict[str, object]]) -> None:
 
 def _render_deck_vs_group_comparison_chart(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer dieses Deck konnte kein Vergleich zur Deckgruppe berechnet werden.")
+        st.info(
+            "Fuer dieses Deck konnte kein Vergleich zur Deckgruppe berechnet werden."
+        )
         return
 
     domain, color_range = _component_color_scale(rows)
@@ -549,7 +639,11 @@ def _render_deck_vs_group_comparison_chart(rows: list[dict[str, object]]) -> Non
                     "field": "Vergleich",
                     "type": "nominal",
                     "axis": {"title": None, "labelAngle": 0},
-                    "sort": {"field": "Vergleichsreihenfolge", "op": "min", "order": "ascending"},
+                    "sort": {
+                        "field": "Vergleichsreihenfolge",
+                        "op": "min",
+                        "order": "ascending",
+                    },
                 },
                 "x": {
                     "field": "Anteil %",
@@ -568,7 +662,11 @@ def _render_deck_vs_group_comparison_chart(rows: list[dict[str, object]]) -> Non
                     {"field": "Vergleich", "type": "nominal"},
                     {"field": "Baustein", "type": "nominal"},
                     {"field": "Anteil %", "type": "quantitative", "format": ".1f"},
-                    {"field": "Kopien pro Deck", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Kopien pro Deck",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                 ],
             },
         },
@@ -585,7 +683,12 @@ def _render_copy_count_histogram(rows: list[dict[str, object]]) -> None:
         {
             "data": {"values": rows},
             "height": 220,
-            "mark": {"type": "bar", "cornerRadiusTopLeft": 6, "cornerRadiusTopRight": 6, "tooltip": True},
+            "mark": {
+                "type": "bar",
+                "cornerRadiusTopLeft": 6,
+                "cornerRadiusTopRight": 6,
+                "tooltip": True,
+            },
             "encoding": {
                 "x": {
                     "field": "label",
@@ -602,12 +705,25 @@ def _render_copy_count_histogram(rows: list[dict[str, object]]) -> None:
                     "field": "label",
                     "type": "nominal",
                     "legend": None,
-                    "scale": {"domain": ["1x", "2x", "3x"], "range": ["#A8DADC", "#457B9D", "#1D3557"]},
+                    "scale": {
+                        "domain": ["1x", "2x", "3x"],
+                        "range": ["#A8DADC", "#457B9D", "#1D3557"],
+                    },
                 },
                 "tooltip": [
                     {"field": "label", "type": "nominal", "title": "Copy Count"},
-                    {"field": "card_count", "type": "quantitative", "format": ".0f", "title": "Karten"},
-                    {"field": "share_pct", "type": "quantitative", "format": ".1f", "title": "Anteil %"},
+                    {
+                        "field": "card_count",
+                        "type": "quantitative",
+                        "format": ".0f",
+                        "title": "Karten",
+                    },
+                    {
+                        "field": "share_pct",
+                        "type": "quantitative",
+                        "format": ".1f",
+                        "title": "Anteil %",
+                    },
                 ],
             },
         },
@@ -656,7 +772,10 @@ def _render_deck_section_heatmap(rows: list[dict[str, object]]) -> None:
                 "color": {
                     "field": "Kopien",
                     "type": "quantitative",
-                    "scale": {"domain": [1, 3], "range": ["#D8F3DC", "#40916C", "#1B4332"]},
+                    "scale": {
+                        "domain": [1, 3],
+                        "range": ["#D8F3DC", "#40916C", "#1B4332"],
+                    },
                     "legend": {"title": "Kopien"},
                 },
                 "tooltip": [
@@ -666,7 +785,11 @@ def _render_deck_section_heatmap(rows: list[dict[str, object]]) -> None:
                     {"field": "Komponente", "type": "nominal"},
                     {"field": "Rolle", "type": "nominal"},
                     {"field": "Kostenklasse", "type": "nominal"},
-                    {"field": "Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                     {"field": "Gesamt EUR", "type": "quantitative", "format": ".2f"},
                 ],
             },
@@ -678,19 +801,27 @@ def _render_deck_section_heatmap(rows: list[dict[str, object]]) -> None:
     )
 
 
-def _render_empty_state(repository: DashboardRepository, start_date: object, end_date: object) -> None:
+def _render_empty_state(
+    repository: DashboardRepository, start_date: object, end_date: object
+) -> None:
     database_summary = repository.get_database_summary(start_date, end_date)
-    st.warning("Es sind noch keine Decklisten gespeichert. Deshalb kann auf dieser Seite aktuell keine Deckliste angezeigt werden.")
+    st.warning(
+        "Es sind noch keine Decklisten gespeichert. Deshalb kann auf dieser Seite aktuell keine Deckliste angezeigt werden."
+    )
 
     info_col_1, info_col_2, info_col_3 = st.columns(3)
     info_col_1.metric("Turniere", database_summary.tournaments)
     info_col_2.metric("Entries", database_summary.entries)
     info_col_3.metric("Skip-Quellen", database_summary.skipped_sources)
 
-    tournaments = repository.list_tournaments(limit=10, start_date=start_date, end_date=end_date)
+    tournaments = repository.list_tournaments(
+        limit=10, start_date=start_date, end_date=end_date
+    )
     if tournaments:
         st.markdown("**Gespeicherte Turniere**")
-        st.dataframe(_drop_columns(tournaments, {"country"}), hide_index=True, width="stretch")
+        st.dataframe(
+            _drop_columns(tournaments, {"country"}), hide_index=True, width="stretch"
+        )
 
     skip_summary = repository.list_skip_reason_summary()
     if skip_summary:
@@ -726,13 +857,21 @@ def _initialize_selection_state(
     selected_deck_id = st.session_state.get(DECK_INSTANCE_STATE_KEY)
 
     if query_param_deck_id in deck_row_by_id:
-        query_param_deck_name = str(deck_row_by_id[int(query_param_deck_id)]["deck_name"])
-        if query_param_deck_name != selected_deck_name or query_param_deck_id != selected_deck_id:
+        query_param_deck_name = str(
+            deck_row_by_id[int(query_param_deck_id)]["deck_name"]
+        )
+        if (
+            query_param_deck_name != selected_deck_name
+            or query_param_deck_id != selected_deck_id
+        ):
             st.session_state[DECK_NAME_STATE_KEY] = query_param_deck_name
             st.session_state[DECK_INSTANCE_STATE_KEY] = int(query_param_deck_id)
             selected_deck_name = query_param_deck_name
             selected_deck_id = int(query_param_deck_id)
-    elif query_param_deck_name in deck_rows_by_name and query_param_deck_name != selected_deck_name:
+    elif (
+        query_param_deck_name in deck_rows_by_name
+        and query_param_deck_name != selected_deck_name
+    ):
         st.session_state[DECK_NAME_STATE_KEY] = query_param_deck_name
         st.session_state.pop(DECK_INSTANCE_STATE_KEY, None)
         selected_deck_name = query_param_deck_name
@@ -756,7 +895,7 @@ def _render_selection_section(
     deck_name_options: list[str],
 ) -> tuple[str, int, list[dict[str, object]]]:
     _render_section_header(
-        "Auswahl",
+        "📋 Auswahl",
         "Waehle zuerst eine Deckgruppe und dann die konkrete Turnierliste. Die nachfolgenden Kennzahlen und Plots beziehen sich immer auf diese eine Liste.",
     )
 
@@ -839,11 +978,13 @@ def _render_analysis_section(
 ) -> None:
     st.divider()
     _render_section_header(
-        "Analyse",
+        "🔍 Analyse",
         "Slot-Verteilungen, Kostenprofile, Vergleich zur Deckgruppe und Expertensicht sind in getrennte Arbeitsbereiche aufgeteilt.",
     )
 
-    analysis_tab_1, analysis_tab_2, analysis_tab_3 = st.tabs(["Verteilungen", "Vergleich", "Expertensicht"])
+    analysis_tab_1, analysis_tab_2, analysis_tab_3 = st.tabs(
+        ["Verteilungen", "Vergleich", "Expertensicht"]
+    )
 
     with analysis_tab_1:
         st.markdown("**Slot-Verteilung nach Deckbereich**")
@@ -890,7 +1031,7 @@ def _render_card_list_section(
 ) -> None:
     st.divider()
     _render_section_header(
-        "Kartenlisten",
+        "📋 Kartenlisten",
         "Die Badge-Zeile fasst Sofortwerte zusammen. Darunter kannst du zwischen kompakter und erweiterter Tabellensicht sowie verschiedenen Sortierungen wechseln.",
     )
 
@@ -900,9 +1041,26 @@ def _render_card_list_section(
         _render_badge_row(
             [
                 ("Main", _format_count(role_metrics.get("main_card_total"))),
-                ("Handtraps", _format_count(_sum_component_copies(deck_section_composition, "non_engine_handtrap"))),
-                ("Boardbreaker", _format_count(_sum_component_copies(deck_section_composition, "non_engine_boardbreaker"))),
-                ("Cardmarket", _format_eur(selected_deck.get("cardmarket_deck_price_eur"))),
+                (
+                    "Handtraps",
+                    _format_count(
+                        _sum_component_copies(
+                            deck_section_composition, "non_engine_handtrap"
+                        )
+                    ),
+                ),
+                (
+                    "Boardbreaker",
+                    _format_count(
+                        _sum_component_copies(
+                            deck_section_composition, "non_engine_boardbreaker"
+                        )
+                    ),
+                ),
+                (
+                    "Cardmarket",
+                    _format_eur(selected_deck.get("cardmarket_deck_price_eur")),
+                ),
                 ("1-of", _format_count(role_metrics.get("main_one_of_count"))),
                 ("2-of", _format_count(role_metrics.get("main_two_of_count"))),
                 ("3-of", _format_count(role_metrics.get("main_three_of_count"))),
@@ -926,7 +1084,11 @@ def _render_card_list_section(
 
     with main_tab:
         st.dataframe(
-            _prepare_card_table_rows(deck_cards["main"], show_detailed_columns=show_detailed_card_tables, sort_mode=table_sort_mode),
+            _prepare_card_table_rows(
+                deck_cards["main"],
+                show_detailed_columns=show_detailed_card_tables,
+                sort_mode=table_sort_mode,
+            ),
             hide_index=True,
             width="stretch",
             column_config=_card_table_config(),
@@ -934,7 +1096,11 @@ def _render_card_list_section(
 
     with extra_tab:
         st.dataframe(
-            _prepare_card_table_rows(deck_cards["extra"], show_detailed_columns=show_detailed_card_tables, sort_mode=table_sort_mode),
+            _prepare_card_table_rows(
+                deck_cards["extra"],
+                show_detailed_columns=show_detailed_card_tables,
+                sort_mode=table_sort_mode,
+            ),
             hide_index=True,
             width="stretch",
             column_config=_card_table_config(),
@@ -942,7 +1108,11 @@ def _render_card_list_section(
 
     with side_tab:
         st.dataframe(
-            _prepare_card_table_rows(deck_cards["side"], show_detailed_columns=show_detailed_card_tables, sort_mode=table_sort_mode),
+            _prepare_card_table_rows(
+                deck_cards["side"],
+                show_detailed_columns=show_detailed_card_tables,
+                sort_mode=table_sort_mode,
+            ),
             hide_index=True,
             width="stretch",
             column_config=_card_table_config(),
@@ -950,12 +1120,10 @@ def _render_card_list_section(
 
 
 def main() -> None:
-    st.set_page_config(page_title="Decklisten", layout="wide")
-
     database_path = resolve_dashboard_db_path()
     repository = DashboardRepository(database_path)
 
-    st.title("Decklisten")
+    st.title("📋 Decklisten")
 
     status_message = repository.status_message()
     if status_message is not None:
@@ -963,16 +1131,24 @@ def main() -> None:
         st.stop()
 
     start_date, end_date = render_dashboard_date_filter(repository)
-    deck_rows = load_deck_summaries(repository, limit=2000, start_date=start_date, end_date=end_date)
+    deck_rows = load_deck_summaries(
+        repository, limit=2000, start_date=start_date, end_date=end_date
+    )
     if not deck_rows:
         _render_empty_state(repository, start_date, end_date)
         st.stop()
 
-    deck_rows_by_name, deck_row_by_id, deck_name_options = _build_deck_lookups(deck_rows)
+    deck_rows_by_name, deck_row_by_id, deck_name_options = _build_deck_lookups(
+        deck_rows
+    )
     _initialize_selection_state(deck_rows_by_name, deck_row_by_id, deck_name_options)
-    _, selected_deck_id, _ = _render_selection_section(deck_rows_by_name, deck_row_by_id, deck_name_options)
+    _, selected_deck_id, _ = _render_selection_section(
+        deck_rows_by_name, deck_row_by_id, deck_name_options
+    )
 
-    page_data = _load_selected_deck_data(repository, selected_deck_id, start_date, end_date)
+    page_data = _load_selected_deck_data(
+        repository, selected_deck_id, start_date, end_date
+    )
     selected_deck = page_data["selected_deck"]
     role_metrics = page_data["role_metrics"]
 

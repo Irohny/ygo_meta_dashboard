@@ -1,20 +1,63 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from statistics import median
 
 import streamlit as st
 
-from ygo_crawler.dashboard_cache import load_aggregate_plot_data, load_deck_name_aggregates_extended
+from ygo_crawler.dashboard_cache import (
+    load_aggregate_plot_data,
+    load_deck_name_aggregates_extended,
+)
 from ygo_crawler.dashboard_filters import render_dashboard_date_filter
 from ygo_crawler.dashboard_queries import DashboardRepository, resolve_dashboard_db_path
-
 
 DECK_NAME_STATE_KEY = "decklisten_selected_deck_name"
 DECK_INSTANCE_STATE_KEY = "decklisten_selected_deck_id"
 DETAIL_NAVIGATION_STATE_KEY = "aggregate_detail_navigation_deck_name"
+PLOT_Y_AXIS_METRIC_STATE_KEY = "aggregate_plot_y_axis_metric"
 QUERY_PARAM_DECK_NAME = "deck_name"
 DECKLIST_PAGE_PATH = Path(__file__).with_name("1_Decklisten.py")
+
+PLOT_Y_AXIS_OPTIONS: dict[str, dict[str, str]] = {
+    "Platzierung": {
+        "kind": "placement",
+        "axis_title": "Platzierung",
+        "tooltip_label_title": "Typische Platzierungsstufe (aus Ø)",
+        "tooltip_value_title": "Exakte Ø-Platzierung",
+    },
+    "Winrate": {
+        "kind": "rate",
+        "field": "winner_rate_pct",
+        "axis_title": "Winrate (%)",
+        "tooltip_value_title": "Winrate %",
+    },
+    "Top-2-Quote": {
+        "kind": "rate",
+        "field": "runner_up_rate_pct",
+        "axis_title": "Top-2-Quote (%)",
+        "tooltip_value_title": "Top-2-Quote %",
+    },
+    "Top-4-Quote": {
+        "kind": "rate",
+        "field": "top_4_finish_rate_pct",
+        "axis_title": "Top-4-Quote (%)",
+        "tooltip_value_title": "Top-4-Quote %",
+    },
+    "Top-8-Quote": {
+        "kind": "rate",
+        "field": "top_8_finish_rate_pct",
+        "axis_title": "Top-8-Quote (%)",
+        "tooltip_value_title": "Top-8-Quote %",
+    },
+    "Top-16-Quote": {
+        "kind": "rate",
+        "field": "top_16_finish_rate_pct",
+        "axis_title": "Top-16-Quote (%)",
+        "tooltip_value_title": "Top-16-Quote %",
+    },
+}
 
 
 def _format_cardmarket_range(row: dict[str, object]) -> str:
@@ -38,6 +81,52 @@ def _numeric_median(rows: list[dict[str, object]], field: str) -> float | None:
     return float(median(values))
 
 
+def _percentile_to_top8_placement(percentile: object) -> float | None:
+    if percentile is None:
+        return None
+    placement = 8.0 - (float(percentile) / 100.0) * 7.0
+    return round(min(max(placement, 1.0), 8.0), 2)
+
+
+def _placement_to_finish_tier_score(placement: object) -> int | None:
+    if placement is None:
+        return None
+    normalized = max(float(placement), 1.0)
+    return int(math.ceil(math.log2(normalized))) + 1
+
+
+def _finish_tier_label(score: int | None) -> str:
+    if score is None:
+        return "-"
+    if score == 1:
+        return "Winner"
+    if score == 2:
+        return "Runner-up"
+    return f"Top {2 ** (score - 1)}"
+
+
+def _row_average_finish_tier_score(row: dict[str, object]) -> int | None:
+    return _placement_to_finish_tier_score(_row_average_placement(row))
+
+
+def _row_average_placement(row: dict[str, object]) -> float | None:
+    average_placement = row.get("average_placement")
+    if average_placement is not None:
+        return float(average_placement)
+    return _percentile_to_top8_placement(row.get("average_placement_percentile"))
+
+
+def _row_median_placement(row: dict[str, object]) -> float | None:
+    median_placement = row.get("median_placement")
+    if median_placement is not None:
+        return float(median_placement)
+    return _percentile_to_top8_placement(row.get("median_placement_percentile"))
+
+
+def _selected_plot_y_axis_config(selection: str) -> dict[str, str]:
+    return PLOT_Y_AXIS_OPTIONS.get(selection, PLOT_Y_AXIS_OPTIONS["Platzierung"])
+
+
 def _open_decklist_detail(deck_name: str) -> None:
     st.session_state[DECK_NAME_STATE_KEY] = deck_name
     st.session_state.pop(DECK_INSTANCE_STATE_KEY, None)
@@ -53,7 +142,11 @@ def _build_aggregate_table_rows(
     table_rows: list[dict[str, object]] = []
     for row in rows:
         deck_name = str(row["deck_name"])
-        trend_series = trend_series_by_deck_name.get(deck_name, {}) if trend_series_by_deck_name is not None else {}
+        trend_series = (
+            trend_series_by_deck_name.get(deck_name, {})
+            if trend_series_by_deck_name is not None
+            else {}
+        )
         meta_trend = trend_series.get("meta_share_pct", [])
         performance_trend = trend_series.get("median_placement_percentile", [])
         price_trend = trend_series.get("median_cardmarket_deck_price_eur", [])
@@ -67,7 +160,9 @@ def _build_aggregate_table_rows(
             "Meta-Anteil %": row["meta_share_pct"],
             "Decks absolut": row["deck_count"],
             "Turnierabdeckung %": row["tournament_coverage_pct"],
-            "Spielerdiversitaet %": round(float(row["player_diversity_ratio"]) * 100.0, 2),
+            "Spielerdiversitaet %": round(
+                float(row["player_diversity_ratio"]) * 100.0, 2
+            ),
             "Ø Platzierungs-Perzentil": row["average_placement_percentile"],
             "Median Platzierungs-Perzentil": row["median_placement_percentile"],
             "Top-25 %": row["top_25_finish_rate_pct"],
@@ -77,7 +172,9 @@ def _build_aggregate_table_rows(
             "Ø Boardbreaker Main": row["average_boardbreaker_card_total"],
             "Ø Handtraps Side %": row["average_side_handtrap_share_pct"],
             "Ø Boardbreaker Side %": row["average_side_boardbreaker_share_pct"],
-            "Ø Weitere Non-Engine Side %": row["average_side_non_engine_other_share_pct"],
+            "Ø Weitere Non-Engine Side %": row[
+                "average_side_non_engine_other_share_pct"
+            ],
             "Median Cardmarket €": row["median_cardmarket_deck_price_eur"],
             "P25-P75 Cardmarket €": _format_cardmarket_range(row),
         }
@@ -132,9 +229,15 @@ def _aggregate_column_config() -> dict[str, object]:
         ),
         "Meta-Anteil %": st.column_config.NumberColumn("Meta-Anteil %", format="%.2f"),
         "Decks absolut": st.column_config.NumberColumn("Decks absolut", format="%d"),
-        "Turnierabdeckung %": st.column_config.NumberColumn("Turnierabdeckung %", format="%.2f"),
-        "Spielerdiversitaet %": st.column_config.NumberColumn("Spielerdiversitaet %", format="%.2f"),
-        "Ø Platzierungs-Perzentil": st.column_config.NumberColumn("Ø Platzierungs-Perzentil", format="%.2f"),
+        "Turnierabdeckung %": st.column_config.NumberColumn(
+            "Turnierabdeckung %", format="%.2f"
+        ),
+        "Spielerdiversitaet %": st.column_config.NumberColumn(
+            "Spielerdiversitaet %", format="%.2f"
+        ),
+        "Ø Platzierungs-Perzentil": st.column_config.NumberColumn(
+            "Ø Platzierungs-Perzentil", format="%.2f"
+        ),
         "Median Platzierungs-Perzentil": st.column_config.NumberColumn(
             "Median Platzierungs-Perzentil",
             format="%.2f",
@@ -142,15 +245,25 @@ def _aggregate_column_config() -> dict[str, object]:
         "Top-25 %": st.column_config.NumberColumn("Top-25 %", format="%.2f"),
         "Ø Main Deck": st.column_config.NumberColumn("Ø Main Deck", format="%.2f"),
         "Ø Engine Main": st.column_config.NumberColumn("Ø Engine Main", format="%.2f"),
-        "Ø Handtraps Main": st.column_config.NumberColumn("Ø Handtraps Main", format="%.2f"),
-        "Ø Boardbreaker Main": st.column_config.NumberColumn("Ø Boardbreaker Main", format="%.2f"),
-        "Ø Handtraps Side %": st.column_config.NumberColumn("Ø Handtraps Side %", format="%.2f"),
-        "Ø Boardbreaker Side %": st.column_config.NumberColumn("Ø Boardbreaker Side %", format="%.2f"),
+        "Ø Handtraps Main": st.column_config.NumberColumn(
+            "Ø Handtraps Main", format="%.2f"
+        ),
+        "Ø Boardbreaker Main": st.column_config.NumberColumn(
+            "Ø Boardbreaker Main", format="%.2f"
+        ),
+        "Ø Handtraps Side %": st.column_config.NumberColumn(
+            "Ø Handtraps Side %", format="%.2f"
+        ),
+        "Ø Boardbreaker Side %": st.column_config.NumberColumn(
+            "Ø Boardbreaker Side %", format="%.2f"
+        ),
         "Ø Weitere Non-Engine Side %": st.column_config.NumberColumn(
             "Ø Weitere Non-Engine Side %",
             format="%.2f",
         ),
-        "Median Cardmarket €": st.column_config.NumberColumn("Median Cardmarket €", format="%.2f"),
+        "Median Cardmarket €": st.column_config.NumberColumn(
+            "Median Cardmarket €", format="%.2f"
+        ),
         "Turniere": st.column_config.NumberColumn("Turniere", format="%d"),
         "Spieler": st.column_config.NumberColumn("Spieler", format="%d"),
         "Ø Platzierung": st.column_config.NumberColumn("Ø Platzierung", format="%.2f"),
@@ -160,16 +273,24 @@ def _aggregate_column_config() -> dict[str, object]:
             help="Monatlicher Median der Cardmarket-Deckkosten.",
             y_min=0.0,
         ),
-        "Ø Side Non-Engine %": st.column_config.NumberColumn("Ø Side Non-Engine %", format="%.2f"),
+        "Ø Side Non-Engine %": st.column_config.NumberColumn(
+            "Ø Side Non-Engine %", format="%.2f"
+        ),
         "Perzentil-IQR": st.column_config.NumberColumn("Perzentil-IQR", format="%.2f"),
         "Preis-IQR €": st.column_config.NumberColumn("Preis-IQR €", format="%.2f"),
-        "Resultate letzte 30 Tage %": st.column_config.NumberColumn("Resultate letzte 30 Tage %", format="%.2f"),
+        "Resultate letzte 30 Tage %": st.column_config.NumberColumn(
+            "Resultate letzte 30 Tage %", format="%.2f"
+        ),
     }
 
 
-def _build_trend_series_by_deck_name(rows: list[dict[str, object]]) -> dict[str, dict[str, list[float]]]:
+def _build_trend_series_by_deck_name(
+    rows: list[dict[str, object]],
+) -> dict[str, dict[str, list[float]]]:
     trend_series_by_deck_name: dict[str, dict[str, list[float]]] = {}
-    for row in sorted(rows, key=lambda item: (str(item["deck_name"]), str(item["month_start"]))):
+    for row in sorted(
+        rows, key=lambda item: (str(item["deck_name"]), str(item["month_start"]))
+    ):
         deck_name = str(row["deck_name"])
         deck_series = trend_series_by_deck_name.setdefault(
             deck_name,
@@ -186,11 +307,15 @@ def _build_trend_series_by_deck_name(rows: list[dict[str, object]]) -> dict[str,
 
         median_placement_percentile = row.get("median_placement_percentile")
         if median_placement_percentile is not None:
-            deck_series["median_placement_percentile"].append(float(median_placement_percentile))
+            deck_series["median_placement_percentile"].append(
+                float(median_placement_percentile)
+            )
 
         median_cardmarket_deck_price_eur = row.get("median_cardmarket_deck_price_eur")
         if median_cardmarket_deck_price_eur is not None:
-            deck_series["median_cardmarket_deck_price_eur"].append(float(median_cardmarket_deck_price_eur))
+            deck_series["median_cardmarket_deck_price_eur"].append(
+                float(median_cardmarket_deck_price_eur)
+            )
 
     return trend_series_by_deck_name
 
@@ -206,7 +331,9 @@ def _value_efficiency_score(row: dict[str, object]) -> float | None:
     return round(float(median_placement_percentile) * 100.0 / normalized_price, 2)
 
 
-def _sort_aggregate_rows(rows: list[dict[str, object]], ranking_label: str) -> list[dict[str, object]]:
+def _sort_aggregate_rows(
+    rows: list[dict[str, object]], ranking_label: str
+) -> list[dict[str, object]]:
     ranking_field_by_label = {
         "Meta-Anteil": "meta_share_pct",
         "Median Platzierungs-Perzentil": "median_placement_percentile",
@@ -235,7 +362,9 @@ def _sort_aggregate_rows(rows: list[dict[str, object]], ranking_label: str) -> l
     )
 
 
-def _select_highlight_rows(rows: list[dict[str, object]]) -> dict[str, dict[str, object] | None]:
+def _select_highlight_rows(
+    rows: list[dict[str, object]],
+) -> dict[str, dict[str, object] | None]:
     most_played = max(
         rows,
         key=lambda row: (
@@ -245,11 +374,12 @@ def _select_highlight_rows(rows: list[dict[str, object]]) -> dict[str, dict[str,
         ),
         default=None,
     )
-    best_median_performance = max(
+    best_average_performance = min(
         rows,
         key=lambda row: (
-            float(row.get("median_placement_percentile") or -1.0),
-            int(row.get("deck_count") or 0),
+            float(_row_average_placement(row) or 9_999.0),
+            -float(row.get("winner_rate_pct") or 0.0),
+            -int(row.get("deck_count") or 0),
             str(row["deck_name"]),
         ),
         default=None,
@@ -265,7 +395,7 @@ def _select_highlight_rows(rows: list[dict[str, object]]) -> dict[str, dict[str,
     )
     return {
         "most_played": most_played,
-        "best_median_performance": best_median_performance,
+        "best_median_performance": best_average_performance,
         "best_value": best_value,
     }
 
@@ -283,7 +413,13 @@ def _render_highlight_card(
             st.metric(title, "-", delta="-", border=True)
             st.caption("Keine Daten verfuegbar.")
             return
-        st.metric(title, str(row["deck_name"]), delta=delta_text, delta_color="off", border=True)
+        st.metric(
+            title,
+            str(row["deck_name"]),
+            delta=delta_text,
+            delta_color="off",
+            border=True,
+        )
         st.caption(supporting_text)
 
 
@@ -301,14 +437,179 @@ def _profile_component_color(component_type: str, component_index: int) -> str:
     return engine_palette[component_index % len(engine_palette)]
 
 
-def _render_popularity_performance_scatter(rows: list[dict[str, object]]) -> None:
+def _render_popularity_performance_scatter(
+    rows: list[dict[str, object]], y_axis_selection: str
+) -> None:
     if not rows:
-        st.info("Fuer die aktuellen Filter konnten keine Popularitaet-versus-Performance-Daten berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine Popularitaet-versus-Performance-Daten berechnet werden."
+        )
         return
+
+    y_axis_config = _selected_plot_y_axis_config(y_axis_selection)
+
+    chart_rows: list[dict[str, object]] = []
+    for row in rows:
+        average_placement = _row_average_placement(row)
+        finish_tier_score = _row_average_finish_tier_score(row)
+        if average_placement is None or finish_tier_score is None:
+            continue
+        chart_row = {
+            **row,
+            "Platzierung": average_placement,
+            "Platzierungsstufe": finish_tier_score,
+            "Platzierungslabel": _finish_tier_label(finish_tier_score),
+        }
+        if y_axis_config["kind"] == "placement":
+            chart_rows.append(chart_row)
+            continue
+
+        metric_field = y_axis_config["field"]
+        metric_value = row.get(metric_field)
+        if metric_value is None:
+            continue
+        chart_row["Y-Achsenwert"] = float(metric_value)
+        chart_rows.append(chart_row)
+    if not chart_rows:
+        st.info(
+            "Fuer die aktuellen Filter konnten keine Popularitaet-versus-Performance-Daten berechnet werden."
+        )
+        return
+
+    y_encoding: dict[str, object]
+    if y_axis_config["kind"] == "placement":
+        max_finish_tier_score = max(int(row["Platzierungsstufe"]) for row in chart_rows)
+        y_encoding = {
+            "field": "Platzierungsstufe",
+            "type": "quantitative",
+            "axis": {
+                "title": y_axis_config["axis_title"],
+                "values": list(range(1, max_finish_tier_score + 1)),
+                "labelExpr": "datum.value == 1 ? 'Winner' : datum.value == 2 ? 'Runner-up' : 'Top ' + pow(2, datum.value - 1)",
+                "tickMinStep": 1,
+            },
+            "scale": {"domain": [max_finish_tier_score, 1], "nice": False},
+        }
+    else:
+        y_encoding = {
+            "field": "Y-Achsenwert",
+            "type": "quantitative",
+            "axis": {
+                "title": y_axis_config["axis_title"],
+                "format": ".0f",
+            },
+            "scale": {"domain": [0, 100], "nice": False},
+        }
+
+    tooltip_rows: list[dict[str, object]] = [
+        {"field": "deck_name", "type": "nominal", "title": "Deckname"},
+        {
+            "field": "meta_share_pct",
+            "type": "quantitative",
+            "format": ".2f",
+            "title": "Meta-Anteil %",
+        },
+    ]
+    if y_axis_config["kind"] == "placement":
+        tooltip_rows.extend(
+            [
+                {
+                    "field": "Platzierungslabel",
+                    "type": "nominal",
+                    "title": y_axis_config["tooltip_label_title"],
+                },
+                {
+                    "field": "Platzierung",
+                    "type": "quantitative",
+                    "format": ".2f",
+                    "title": y_axis_config["tooltip_value_title"],
+                },
+            ]
+        )
+    else:
+        tooltip_rows.extend(
+            [
+                {
+                    "field": "Y-Achsenwert",
+                    "type": "quantitative",
+                    "format": ".2f",
+                    "title": y_axis_config["tooltip_value_title"],
+                },
+                {
+                    "field": "Platzierungslabel",
+                    "type": "nominal",
+                    "title": "Typische Platzierungsstufe (aus Ø)",
+                },
+                {
+                    "field": "Platzierung",
+                    "type": "quantitative",
+                    "format": ".2f",
+                    "title": "Exakte Ø-Platzierung",
+                },
+            ]
+        )
+    tooltip_rows.extend(
+        [
+            {
+                "field": "winner_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Winrate %",
+            },
+            {
+                "field": "runner_up_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-2-Quote %",
+            },
+            {
+                "field": "top_4_finish_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-4-Quote %",
+            },
+            {
+                "field": "top_8_finish_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-8-Quote %",
+            },
+            {
+                "field": "top_16_finish_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-16-Quote %",
+            },
+            {
+                "field": "top_25_finish_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-25 %",
+            },
+            {
+                "field": "deck_count",
+                "type": "quantitative",
+                "format": ".0f",
+                "title": "Decks absolut",
+            },
+            {
+                "field": "tournament_coverage_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Turnierabdeckung %",
+            },
+            {
+                "field": "median_cardmarket_deck_price_eur",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Median Cardmarket EUR",
+            },
+        ]
+    )
 
     st.vega_lite_chart(
         {
-            "data": {"values": rows},
+            "data": {"values": chart_rows},
             "height": 360,
             "mark": {"type": "circle", "tooltip": True, "opacity": 0.8},
             "encoding": {
@@ -317,12 +618,7 @@ def _render_popularity_performance_scatter(rows: list[dict[str, object]]) -> Non
                     "type": "quantitative",
                     "axis": {"title": "Meta-Anteil (%)"},
                 },
-                "y": {
-                    "field": "average_placement_percentile",
-                    "type": "quantitative",
-                    "axis": {"title": "Ø Platzierungs-Perzentil"},
-                    "scale": {"zero": False},
-                },
+                "y": y_encoding,
                 "size": {
                     "field": "deck_count",
                     "type": "quantitative",
@@ -335,30 +631,192 @@ def _render_popularity_performance_scatter(rows: list[dict[str, object]]) -> Non
                     "legend": {"title": "Median Cardmarket EUR"},
                     "scale": {"range": ["#A8DADC", "#1D3557"]},
                 },
-                "tooltip": [
-                    {"field": "deck_name", "type": "nominal", "title": "Deckname"},
-                    {"field": "meta_share_pct", "type": "quantitative", "format": ".2f", "title": "Meta-Anteil %"},
-                    {"field": "average_placement_percentile", "type": "quantitative", "format": ".2f", "title": "Ø Platzierungs-Perzentil"},
-                    {"field": "median_placement_percentile", "type": "quantitative", "format": ".2f", "title": "Median Platzierungs-Perzentil"},
-                    {"field": "top_25_finish_rate_pct", "type": "quantitative", "format": ".2f", "title": "Top-25 %"},
-                    {"field": "deck_count", "type": "quantitative", "format": ".0f", "title": "Decks absolut"},
-                    {"field": "tournament_coverage_pct", "type": "quantitative", "format": ".2f", "title": "Turnierabdeckung %"},
-                    {"field": "median_cardmarket_deck_price_eur", "type": "quantitative", "format": ".2f", "title": "Median Cardmarket EUR"},
-                ],
+                "tooltip": tooltip_rows,
             },
         },
         width="stretch",
     )
 
 
-def _render_cost_performance_scatter(rows: list[dict[str, object]]) -> None:
+def _render_cost_performance_scatter(
+    rows: list[dict[str, object]], y_axis_selection: str
+) -> None:
     if not rows:
-        st.info("Fuer die aktuellen Filter konnten keine Kosten-versus-Performance-Daten berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine Kosten-versus-Performance-Daten berechnet werden."
+        )
         return
+
+    y_axis_config = _selected_plot_y_axis_config(y_axis_selection)
+
+    chart_rows: list[dict[str, object]] = []
+    for row in rows:
+        average_placement = _row_average_placement(row)
+        finish_tier_score = _row_average_finish_tier_score(row)
+        if average_placement is None or finish_tier_score is None:
+            continue
+        chart_row = {
+            **row,
+            "Platzierung": average_placement,
+            "Platzierungsstufe": finish_tier_score,
+            "Platzierungslabel": _finish_tier_label(finish_tier_score),
+        }
+        if y_axis_config["kind"] == "placement":
+            chart_rows.append(chart_row)
+            continue
+
+        metric_field = y_axis_config["field"]
+        metric_value = row.get(metric_field)
+        if metric_value is None:
+            continue
+        chart_row["Y-Achsenwert"] = float(metric_value)
+        chart_rows.append(chart_row)
+    if not chart_rows:
+        st.info(
+            "Fuer die aktuellen Filter konnten keine Kosten-versus-Performance-Daten berechnet werden."
+        )
+        return
+
+    y_encoding: dict[str, object]
+    if y_axis_config["kind"] == "placement":
+        max_finish_tier_score = max(int(row["Platzierungsstufe"]) for row in chart_rows)
+        y_encoding = {
+            "field": "Platzierungsstufe",
+            "type": "quantitative",
+            "axis": {
+                "title": y_axis_config["axis_title"],
+                "values": list(range(1, max_finish_tier_score + 1)),
+                "labelExpr": "datum.value == 1 ? 'Winner' : datum.value == 2 ? 'Runner-up' : 'Top ' + pow(2, datum.value - 1)",
+                "tickMinStep": 1,
+            },
+            "scale": {"domain": [max_finish_tier_score, 1], "nice": False},
+        }
+    else:
+        y_encoding = {
+            "field": "Y-Achsenwert",
+            "type": "quantitative",
+            "axis": {
+                "title": y_axis_config["axis_title"],
+                "format": ".0f",
+            },
+            "scale": {"domain": [0, 100], "nice": False},
+        }
+
+    tooltip_rows: list[dict[str, object]] = [
+        {"field": "deck_name", "type": "nominal", "title": "Deckname"},
+        {
+            "field": "median_cardmarket_deck_price_eur",
+            "type": "quantitative",
+            "format": ".2f",
+            "title": "Median Cardmarket EUR",
+        },
+        {
+            "field": "cardmarket_deck_price_p25_eur",
+            "type": "quantitative",
+            "format": ".2f",
+            "title": "P25 EUR",
+        },
+        {
+            "field": "cardmarket_deck_price_p75_eur",
+            "type": "quantitative",
+            "format": ".2f",
+            "title": "P75 EUR",
+        },
+    ]
+    if y_axis_config["kind"] == "placement":
+        tooltip_rows.extend(
+            [
+                {
+                    "field": "Platzierungslabel",
+                    "type": "nominal",
+                    "title": y_axis_config["tooltip_label_title"],
+                },
+                {
+                    "field": "Platzierung",
+                    "type": "quantitative",
+                    "format": ".2f",
+                    "title": y_axis_config["tooltip_value_title"],
+                },
+            ]
+        )
+    else:
+        tooltip_rows.extend(
+            [
+                {
+                    "field": "Y-Achsenwert",
+                    "type": "quantitative",
+                    "format": ".2f",
+                    "title": y_axis_config["tooltip_value_title"],
+                },
+                {
+                    "field": "Platzierungslabel",
+                    "type": "nominal",
+                    "title": "Typische Platzierungsstufe (aus Ø)",
+                },
+                {
+                    "field": "Platzierung",
+                    "type": "quantitative",
+                    "format": ".2f",
+                    "title": "Exakte Ø-Platzierung",
+                },
+            ]
+        )
+    tooltip_rows.extend(
+        [
+            {
+                "field": "winner_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Winrate %",
+            },
+            {
+                "field": "runner_up_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-2-Quote %",
+            },
+            {
+                "field": "top_4_finish_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-4-Quote %",
+            },
+            {
+                "field": "top_8_finish_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-8-Quote %",
+            },
+            {
+                "field": "top_16_finish_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-16-Quote %",
+            },
+            {
+                "field": "top_25_finish_rate_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Top-25 %",
+            },
+            {
+                "field": "meta_share_pct",
+                "type": "quantitative",
+                "format": ".2f",
+                "title": "Meta-Anteil %",
+            },
+            {
+                "field": "deck_count",
+                "type": "quantitative",
+                "format": ".0f",
+                "title": "Decks absolut",
+            },
+        ]
+    )
 
     st.vega_lite_chart(
         {
-            "data": {"values": rows},
+            "data": {"values": chart_rows},
             "height": 360,
             "mark": {"type": "circle", "tooltip": True, "opacity": 0.8},
             "encoding": {
@@ -367,12 +825,7 @@ def _render_cost_performance_scatter(rows: list[dict[str, object]]) -> None:
                     "type": "quantitative",
                     "axis": {"title": "Median Cardmarket EUR"},
                 },
-                "y": {
-                    "field": "average_placement_percentile",
-                    "type": "quantitative",
-                    "axis": {"title": "Ø Platzierungs-Perzentil"},
-                    "scale": {"zero": False},
-                },
+                "y": y_encoding,
                 "size": {
                     "field": "meta_share_pct",
                     "type": "quantitative",
@@ -385,16 +838,7 @@ def _render_cost_performance_scatter(rows: list[dict[str, object]]) -> None:
                     "legend": {"title": "Meta-Anteil %"},
                     "scale": {"range": ["#D8F3DC", "#1B4332"]},
                 },
-                "tooltip": [
-                    {"field": "deck_name", "type": "nominal", "title": "Deckname"},
-                    {"field": "median_cardmarket_deck_price_eur", "type": "quantitative", "format": ".2f", "title": "Median Cardmarket EUR"},
-                    {"field": "cardmarket_deck_price_p25_eur", "type": "quantitative", "format": ".2f", "title": "P25 EUR"},
-                    {"field": "cardmarket_deck_price_p75_eur", "type": "quantitative", "format": ".2f", "title": "P75 EUR"},
-                    {"field": "average_placement_percentile", "type": "quantitative", "format": ".2f", "title": "Ø Platzierungs-Perzentil"},
-                    {"field": "top_25_finish_rate_pct", "type": "quantitative", "format": ".2f", "title": "Top-25 %"},
-                    {"field": "meta_share_pct", "type": "quantitative", "format": ".2f", "title": "Meta-Anteil %"},
-                    {"field": "deck_count", "type": "quantitative", "format": ".0f", "title": "Decks absolut"},
-                ],
+                "tooltip": tooltip_rows,
             },
         },
         width="stretch",
@@ -403,7 +847,9 @@ def _render_cost_performance_scatter(rows: list[dict[str, object]]) -> None:
 
 def _render_deck_profile_chart(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer die aktuellen Filter konnten keine Profil-Daten berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine Profil-Daten berechnet werden."
+        )
         return
 
     chart_rows: list[dict[str, object]] = []
@@ -413,7 +859,9 @@ def _render_deck_profile_chart(rows: list[dict[str, object]]) -> None:
     engine_index = 0
     section_labels = {"main": "Main Deck", "side": "Side Deck"}
 
-    for row in sorted(rows, key=lambda item: (int(item["type_rank"]), str(item["component_name"]))):
+    for row in sorted(
+        rows, key=lambda item: (int(item["type_rank"]), str(item["component_name"]))
+    ):
         component_name = str(row["component_name"])
         component_type = str(row["component_type"])
         if component_name not in seen_components:
@@ -471,10 +919,22 @@ def _render_deck_profile_chart(rows: list[dict[str, object]]) -> None:
                     {"field": "Deckbereich", "type": "nominal"},
                     {"field": "Baustein", "type": "nominal"},
                     {"field": "Anteil %", "type": "quantitative", "format": ".2f"},
-                    {"field": "Ø Kopien / Gruppendeck", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Ø Kopien / Gruppendeck",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                     {"field": "Meta-Anteil %", "type": "quantitative", "format": ".2f"},
-                    {"field": "Ø Platzierungs-Perzentil", "type": "quantitative", "format": ".2f"},
-                    {"field": "Median Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Ø Platzierungs-Perzentil",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
+                    {
+                        "field": "Median Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                 ],
             },
         },
@@ -483,7 +943,16 @@ def _render_deck_profile_chart(rows: list[dict[str, object]]) -> None:
 
 
 def _trend_color_range(deck_count: int) -> list[str]:
-    palette = ["#1D3557", "#2A9D8F", "#E76F51", "#F4A261", "#6D597A", "#457B9D", "#264653", "#E9C46A"]
+    palette = [
+        "#1D3557",
+        "#2A9D8F",
+        "#E76F51",
+        "#F4A261",
+        "#6D597A",
+        "#457B9D",
+        "#264653",
+        "#E9C46A",
+    ]
     if deck_count <= len(palette):
         return palette[:deck_count]
     return [palette[index % len(palette)] for index in range(deck_count)]
@@ -491,12 +960,16 @@ def _trend_color_range(deck_count: int) -> list[str]:
 
 def _render_deck_name_meta_heatmap(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer die aktuellen Filter konnten keine monatlichen Meta-Anteile berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine monatlichen Meta-Anteile berechnet werden."
+        )
         return
 
     chart_rows: list[dict[str, object]] = []
     deck_domain: list[str] = []
-    for row in sorted(rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))):
+    for row in sorted(
+        rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))
+    ):
         deck_name = str(row["deck_name"])
         if deck_name not in deck_domain:
             deck_domain.append(deck_name)
@@ -519,7 +992,9 @@ def _render_deck_name_meta_heatmap(rows: list[dict[str, object]]) -> None:
         )
 
     if not chart_rows:
-        st.info("Fuer die aktuellen Filter konnten keine monatlichen Meta-Anteile berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine monatlichen Meta-Anteile berechnet werden."
+        )
         return
 
     st.vega_lite_chart(
@@ -549,14 +1024,28 @@ def _render_deck_name_meta_heatmap(rows: list[dict[str, object]]) -> None:
                     {"field": "Deckname", "type": "nominal"},
                     {"field": "Monat", "type": "nominal"},
                     {"field": "Meta-Anteil %", "type": "quantitative", "format": ".2f"},
-                    {"field": "Decks", "type": "quantitative", "format": ".0f", "title": "Decks des Decknamens"},
-                    {"field": "Monatsdecks", "type": "quantitative", "format": ".0f", "title": "Decks im Monat gesamt"},
+                    {
+                        "field": "Decks",
+                        "type": "quantitative",
+                        "format": ".0f",
+                        "title": "Decks des Decknamens",
+                    },
+                    {
+                        "field": "Monatsdecks",
+                        "type": "quantitative",
+                        "format": ".0f",
+                        "title": "Decks im Monat gesamt",
+                    },
                     {
                         "field": "Median Platzierungs-Perzentil",
                         "type": "quantitative",
                         "format": ".2f",
                     },
-                    {"field": "Median Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                 ],
             },
         },
@@ -566,11 +1055,15 @@ def _render_deck_name_meta_heatmap(rows: list[dict[str, object]]) -> None:
 
 def _render_deck_name_performance_drift(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer die aktuellen Filter konnten keine monatlichen Performance-Werte berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine monatlichen Performance-Werte berechnet werden."
+        )
         return
 
     deck_domain: list[str] = []
-    for row in sorted(rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))):
+    for row in sorted(
+        rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))
+    ):
         deck_name = str(row["deck_name"])
         if deck_name not in deck_domain:
             deck_domain.append(deck_name)
@@ -580,6 +1073,13 @@ def _render_deck_name_performance_drift(rows: list[dict[str, object]]) -> None:
             "Monat": str(row["month_start"]),
             "Deckname": str(row["deck_name"]),
             "Deck-Rang": int(row["deck_rank"]),
+            "Ø Platzierung": _row_average_placement(row),
+            "Platzierungsstufe": _placement_to_finish_tier_score(
+                _row_average_placement(row)
+            ),
+            "Platzierungslabel": _finish_tier_label(
+                _placement_to_finish_tier_score(_row_average_placement(row))
+            ),
             "Median Platzierungs-Perzentil": float(row["median_placement_percentile"]),
             "Perzentil-IQR": row.get("placement_percentile_iqr"),
             "Meta-Anteil %": row.get("meta_share_pct"),
@@ -587,12 +1087,20 @@ def _render_deck_name_performance_drift(rows: list[dict[str, object]]) -> None:
             "Median Cardmarket EUR": row.get("median_cardmarket_deck_price_eur"),
         }
         for row in rows
-        if row.get("median_placement_percentile") is not None
+        if _row_average_placement(row) is not None
     ]
 
     if not chart_rows:
-        st.info("Fuer die aktuellen Filter konnten keine monatlichen Performance-Werte berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine monatlichen Performance-Werte berechnet werden."
+        )
         return
+
+    max_finish_tier_score = max(
+        int(row["Platzierungsstufe"])
+        for row in chart_rows
+        if row.get("Platzierungsstufe") is not None
+    )
 
     st.vega_lite_chart(
         {
@@ -606,25 +1114,59 @@ def _render_deck_name_performance_drift(rows: list[dict[str, object]]) -> None:
                     "axis": {"title": "Monat", "format": "%Y-%m"},
                 },
                 "y": {
-                    "field": "Median Platzierungs-Perzentil",
+                    "field": "Platzierungsstufe",
                     "type": "quantitative",
-                    "axis": {"title": "Median Platzierungs-Perzentil"},
-                    "scale": {"zero": False},
+                    "axis": {
+                        "title": "Platzierung",
+                        "values": list(range(1, max_finish_tier_score + 1)),
+                        "labelExpr": "datum.value == 1 ? 'Winner' : datum.value == 2 ? 'Runner-up' : 'Top ' + pow(2, datum.value - 1)",
+                        "tickMinStep": 1,
+                    },
+                    "scale": {"domain": [max_finish_tier_score, 1], "nice": False},
                 },
                 "color": {
                     "field": "Deckname",
                     "type": "nominal",
-                    "scale": {"domain": deck_domain, "range": _trend_color_range(len(deck_domain))},
+                    "scale": {
+                        "domain": deck_domain,
+                        "range": _trend_color_range(len(deck_domain)),
+                    },
                     "legend": {"title": None, "orient": "bottom"},
                 },
                 "tooltip": [
                     {"field": "Deckname", "type": "nominal"},
                     {"field": "Monat", "type": "temporal", "format": "%Y-%m"},
-                    {"field": "Median Platzierungs-Perzentil", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Platzierungsstufe",
+                        "type": "quantitative",
+                        "format": ".0f",
+                        "title": "Platzierungsstufe (Bucket)",
+                    },
+                    {
+                        "field": "Platzierungslabel",
+                        "type": "nominal",
+                        "title": "Typische Platzierungsstufe (aus Ø)",
+                    },
+                    {
+                        "field": "Ø Platzierung",
+                        "type": "quantitative",
+                        "format": ".2f",
+                        "title": "Exakte Ø-Platzierung",
+                    },
+                    {
+                        "field": "Median Platzierungs-Perzentil",
+                        "type": "quantitative",
+                        "format": ".2f",
+                        "title": "Median Perzentil (intern)",
+                    },
                     {"field": "Perzentil-IQR", "type": "quantitative", "format": ".2f"},
                     {"field": "Meta-Anteil %", "type": "quantitative", "format": ".2f"},
                     {"field": "Decks", "type": "quantitative", "format": ".0f"},
-                    {"field": "Median Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                 ],
             },
         },
@@ -634,11 +1176,15 @@ def _render_deck_name_performance_drift(rows: list[dict[str, object]]) -> None:
 
 def _render_deck_name_price_drift(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer die aktuellen Filter konnten keine monatlichen Preiswerte berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine monatlichen Preiswerte berechnet werden."
+        )
         return
 
     deck_domain: list[str] = []
-    for row in sorted(rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))):
+    for row in sorted(
+        rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))
+    ):
         deck_name = str(row["deck_name"])
         if deck_name not in deck_domain:
             deck_domain.append(deck_name)
@@ -659,7 +1205,9 @@ def _render_deck_name_price_drift(rows: list[dict[str, object]]) -> None:
     ]
 
     if not chart_rows:
-        st.info("Fuer die aktuellen Filter konnten keine monatlichen Preiswerte berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine monatlichen Preiswerte berechnet werden."
+        )
         return
 
     st.vega_lite_chart(
@@ -682,16 +1230,27 @@ def _render_deck_name_price_drift(rows: list[dict[str, object]]) -> None:
                 "color": {
                     "field": "Deckname",
                     "type": "nominal",
-                    "scale": {"domain": deck_domain, "range": _trend_color_range(len(deck_domain))},
+                    "scale": {
+                        "domain": deck_domain,
+                        "range": _trend_color_range(len(deck_domain)),
+                    },
                     "legend": {"title": None, "orient": "bottom"},
                 },
                 "tooltip": [
                     {"field": "Deckname", "type": "nominal"},
                     {"field": "Monat", "type": "temporal", "format": "%Y-%m"},
-                    {"field": "Median Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                     {"field": "Preis-IQR EUR", "type": "quantitative", "format": ".2f"},
                     {"field": "Meta-Anteil %", "type": "quantitative", "format": ".2f"},
-                    {"field": "Median Platzierungs-Perzentil", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Platzierungs-Perzentil",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                     {"field": "Decks", "type": "quantitative", "format": ".0f"},
                 ],
             },
@@ -702,11 +1261,15 @@ def _render_deck_name_price_drift(rows: list[dict[str, object]]) -> None:
 
 def _render_deck_name_stability_chart(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer die aktuellen Filter konnten keine monatlichen Stabilitaetswerte berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine monatlichen Stabilitaetswerte berechnet werden."
+        )
         return
 
     deck_domain: list[str] = []
-    for row in sorted(rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))):
+    for row in sorted(
+        rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))
+    ):
         deck_name = str(row["deck_name"])
         if deck_name not in deck_domain:
             deck_domain.append(deck_name)
@@ -727,7 +1290,9 @@ def _render_deck_name_stability_chart(rows: list[dict[str, object]]) -> None:
     ]
 
     if not chart_rows:
-        st.info("Fuer die aktuellen Filter konnten keine monatlichen Stabilitaetswerte berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine monatlichen Stabilitaetswerte berechnet werden."
+        )
         return
 
     st.vega_lite_chart(
@@ -750,17 +1315,28 @@ def _render_deck_name_stability_chart(rows: list[dict[str, object]]) -> None:
                 "color": {
                     "field": "Deckname",
                     "type": "nominal",
-                    "scale": {"domain": deck_domain, "range": _trend_color_range(len(deck_domain))},
+                    "scale": {
+                        "domain": deck_domain,
+                        "range": _trend_color_range(len(deck_domain)),
+                    },
                     "legend": {"title": None, "orient": "bottom"},
                 },
                 "tooltip": [
                     {"field": "Deckname", "type": "nominal"},
                     {"field": "Monat", "type": "temporal", "format": "%Y-%m"},
                     {"field": "Perzentil-IQR", "type": "quantitative", "format": ".2f"},
-                    {"field": "Median Platzierungs-Perzentil", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Platzierungs-Perzentil",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                     {"field": "Meta-Anteil %", "type": "quantitative", "format": ".2f"},
                     {"field": "Decks", "type": "quantitative", "format": ".0f"},
-                    {"field": "Median Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                 ],
             },
         },
@@ -768,7 +1344,9 @@ def _render_deck_name_stability_chart(rows: list[dict[str, object]]) -> None:
     )
 
 
-def _build_bump_chart_rows(rows: list[dict[str, object]], ranking_label: str) -> list[dict[str, object]]:
+def _build_bump_chart_rows(
+    rows: list[dict[str, object]], ranking_label: str
+) -> list[dict[str, object]]:
     ranking_value_field = {
         "Meta-Anteil": "meta_share_pct",
         "Median Platzierungs-Perzentil": "median_placement_percentile",
@@ -814,29 +1392,41 @@ def _build_bump_chart_rows(rows: list[dict[str, object]], ranking_label: str) ->
                     "Rang": rank,
                     "Rangtyp": ranking_label,
                     "Meta-Anteil %": row.get("meta_share_pct"),
-                    "Median Platzierungs-Perzentil": row.get("median_placement_percentile"),
+                    "Median Platzierungs-Perzentil": row.get(
+                        "median_placement_percentile"
+                    ),
                     "Perzentil-IQR": row.get("placement_percentile_iqr"),
                     "Decks": int(row["deck_count"]),
-                    "Median Cardmarket EUR": row.get("median_cardmarket_deck_price_eur"),
+                    "Median Cardmarket EUR": row.get(
+                        "median_cardmarket_deck_price_eur"
+                    ),
                 }
             )
     return chart_rows
 
 
-def _render_deck_name_bump_chart(rows: list[dict[str, object]], ranking_label: str) -> None:
+def _render_deck_name_bump_chart(
+    rows: list[dict[str, object]], ranking_label: str
+) -> None:
     if not rows:
-        st.info("Fuer die aktuellen Filter konnten keine Rangverlaeufe berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine Rangverlaeufe berechnet werden."
+        )
         return
 
     deck_domain: list[str] = []
-    for row in sorted(rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))):
+    for row in sorted(
+        rows, key=lambda item: (int(item["deck_rank"]), str(item["deck_name"]))
+    ):
         deck_name = str(row["deck_name"])
         if deck_name not in deck_domain:
             deck_domain.append(deck_name)
 
     chart_rows = _build_bump_chart_rows(rows, ranking_label)
     if not chart_rows:
-        st.info("Fuer die aktuellen Filter konnten keine Rangverlaeufe berechnet werden.")
+        st.info(
+            "Fuer die aktuellen Filter konnten keine Rangverlaeufe berechnet werden."
+        )
         return
 
     max_rank = max(int(row["Rang"]) for row in chart_rows)
@@ -844,7 +1434,11 @@ def _render_deck_name_bump_chart(rows: list[dict[str, object]], ranking_label: s
         {
             "data": {"values": chart_rows},
             "height": 360,
-            "mark": {"type": "line", "point": {"filled": True, "size": 80}, "tooltip": True},
+            "mark": {
+                "type": "line",
+                "point": {"filled": True, "size": 80},
+                "tooltip": True,
+            },
             "encoding": {
                 "x": {
                     "field": "Monat",
@@ -860,19 +1454,35 @@ def _render_deck_name_bump_chart(rows: list[dict[str, object]], ranking_label: s
                 "color": {
                     "field": "Deckname",
                     "type": "nominal",
-                    "scale": {"domain": deck_domain, "range": _trend_color_range(len(deck_domain))},
+                    "scale": {
+                        "domain": deck_domain,
+                        "range": _trend_color_range(len(deck_domain)),
+                    },
                     "legend": {"title": None, "orient": "bottom"},
                 },
                 "detail": {"field": "Deckname", "type": "nominal"},
                 "tooltip": [
                     {"field": "Deckname", "type": "nominal"},
                     {"field": "Monat", "type": "temporal", "format": "%Y-%m"},
-                    {"field": "Rang", "type": "quantitative", "format": ".0f", "title": "Rang"},
+                    {
+                        "field": "Rang",
+                        "type": "quantitative",
+                        "format": ".0f",
+                        "title": "Rang",
+                    },
                     {"field": "Meta-Anteil %", "type": "quantitative", "format": ".2f"},
-                    {"field": "Median Platzierungs-Perzentil", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Platzierungs-Perzentil",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                     {"field": "Perzentil-IQR", "type": "quantitative", "format": ".2f"},
                     {"field": "Decks", "type": "quantitative", "format": ".0f"},
-                    {"field": "Median Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                 ],
             },
         },
@@ -902,7 +1512,13 @@ def _render_control_section() -> tuple[int, str, int, str, str, bool]:
             )
             table_ranking_label = sample_col_2.selectbox(
                 "Tabellen-Ranking",
-                options=["Meta-Anteil", "Median Platzierungs-Perzentil", "Top-25 %", "Preis-Leistung", "Resultate letzte 30 Tage"],
+                options=[
+                    "Meta-Anteil",
+                    "Median Platzierungs-Perzentil",
+                    "Top-25 %",
+                    "Preis-Leistung",
+                    "Resultate letzte 30 Tage",
+                ],
                 index=0,
             )
             profile_top_n = sample_col_3.selectbox(
@@ -916,7 +1532,12 @@ def _render_control_section() -> tuple[int, str, int, str, str, bool]:
             view_col_1, view_col_2 = st.columns(2)
             profile_sort_label = view_col_1.selectbox(
                 "Profilplot sortieren nach",
-                options=["Meta-Anteil", "Deckanzahl", "Ø Platzierungs-Perzentil", "Median Cardmarket €"],
+                options=[
+                    "Meta-Anteil",
+                    "Deckanzahl",
+                    "Ø Platzierungs-Perzentil",
+                    "Median Cardmarket €",
+                ],
                 index=0,
             )
             bump_ranking_label = view_col_2.selectbox(
@@ -925,18 +1546,35 @@ def _render_control_section() -> tuple[int, str, int, str, str, bool]:
                 index=0,
             )
             show_extended_metrics = st.toggle("Erweiterte Kennzahlen", value=False)
-            st.caption("Schaltet Zusatzspalten wie IQR, Teilnehmermittel, Rohplatzierung und Recency in der Tabelle frei.")
-    return int(minimum_deck_count), str(table_ranking_label), int(profile_top_n), str(profile_sort_label), str(bump_ranking_label), bool(show_extended_metrics)
+            st.caption(
+                "Schaltet Zusatzspalten wie IQR, Teilnehmermittel, Rohplatzierung und Recency in der Tabelle frei."
+            )
+    return (
+        int(minimum_deck_count),
+        str(table_ranking_label),
+        int(profile_top_n),
+        str(profile_sort_label),
+        str(bump_ranking_label),
+        bool(show_extended_metrics),
+    )
 
 
 def _load_filtered_rows(
     aggregate_rows: list[dict[str, object]],
     minimum_deck_count: int,
     table_ranking_label: str,
-) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, dict[str, object] | None]]:
-    filtered_rows = [row for row in aggregate_rows if int(row["deck_count"]) >= minimum_deck_count]
+) -> tuple[
+    list[dict[str, object]],
+    list[dict[str, object]],
+    dict[str, dict[str, object] | None],
+]:
+    filtered_rows = [
+        row for row in aggregate_rows if int(row["deck_count"]) >= minimum_deck_count
+    ]
     if not filtered_rows:
-        st.warning("Mit der aktuellen Mindestanzahl an Listen bleiben keine Decknamen uebrig.")
+        st.warning(
+            "Mit der aktuellen Mindestanzahl an Listen bleiben keine Decknamen uebrig."
+        )
         st.stop()
 
     ranked_rows = _sort_aggregate_rows(filtered_rows, table_ranking_label)
@@ -974,7 +1612,9 @@ def _load_plot_data(
         "cost_rows": plot_data["cost_rows"],
         "profile_rows": plot_data["profile_rows"],
         "trend_rows": plot_data["trend_rows"],
-        "trend_series_by_deck_name": _build_trend_series_by_deck_name(plot_data["table_trend_rows"]),
+        "trend_series_by_deck_name": _build_trend_series_by_deck_name(
+            plot_data["table_trend_rows"]
+        ),
     }
 
 
@@ -986,9 +1626,9 @@ def _render_highlight_section(
         "Die Tabelle priorisiert normalisierte Vergleichswerte. In der erweiterten Ansicht kommen Sekundaerkennzahlen wie Rohplatzierung, IQRs, Teilnehmermittel und Recency hinzu."
     )
     with st.container(border=True):
-        st.subheader("Schnelle Einordnung")
+        st.subheader("🔍 Schnelle Einordnung")
         st.caption(
-            "Die drei Karten verdichten die aktuelle Filterlage. Preis-Leistung nutzt hier Median Platzierungs-Perzentil pro 100 EUR Median Cardmarket als einfache Heuristik."
+            "Die drei Karten verdichten die aktuelle Filterlage. Die Kosten-Effizienz wird als Leistung pro 100 EUR berechnet: (Median-Perzentil / Median-Deckpreis) * 100. Hoeher ist besser."
         )
 
         summary_col_1, summary_col_2, summary_col_3, summary_col_4 = st.columns(4)
@@ -1004,7 +1644,9 @@ def _render_highlight_section(
             f"{median_meta_share:.2f}" if median_meta_share is not None else "-",
             border=True,
         )
-        median_price = _numeric_median(filtered_rows, "median_cardmarket_deck_price_eur")
+        median_price = _numeric_median(
+            filtered_rows, "median_cardmarket_deck_price_eur"
+        )
         summary_col_4.metric(
             "Median Cardmarket €",
             f"EUR {median_price:.2f}" if median_price is not None else "-",
@@ -1035,58 +1677,84 @@ def _render_highlight_section(
         )
         _render_highlight_card(
             highlight_col_2,
-            title="Bestes Median-Perzentil",
+            title="Beste Ø-Platzierung",
             row=best_median_performance_row,
             delta_text=(
-                f"{float(best_median_performance_row['median_placement_percentile']):.2f} Median-Perzentil"
-                if best_median_performance_row is not None and best_median_performance_row.get("median_placement_percentile") is not None
+                f"{_finish_tier_label(_row_average_finish_tier_score(best_median_performance_row))} | Ø {float(_row_average_placement(best_median_performance_row)):.2f}"
+                if best_median_performance_row is not None
+                and _row_average_placement(best_median_performance_row) is not None
                 else "-"
             ),
             supporting_text=(
-                f"Meta-Anteil: {float(best_median_performance_row['meta_share_pct']):.2f}% | Decks: {int(best_median_performance_row['deck_count'])}"
+                f"Winner-Quote: {float(best_median_performance_row.get('winner_rate_pct') or 0.0):.2f}% | Top-8-Quote: {float(best_median_performance_row.get('top_8_finish_rate_pct') or 0.0):.2f}%"
                 if best_median_performance_row is not None
                 else "Keine Daten verfuegbar."
             ),
         )
         _render_highlight_card(
             highlight_col_3,
-            title="Bestes Preis-Leistungs-Verhaeltnis",
+            title="Beste Kosten-Effizienz",
             row=best_value_row,
             delta_text=(
-                f"{_value_efficiency_score(best_value_row):.2f} Perzentilpunkte / 100 EUR"
-                if best_value_row is not None and _value_efficiency_score(best_value_row) is not None
+                f"{_value_efficiency_score(best_value_row):.2f} Punkte je 100 EUR"
+                if best_value_row is not None
+                and _value_efficiency_score(best_value_row) is not None
                 else "-"
             ),
             supporting_text=(
-                f"Median Perzentil: {float(best_value_row['median_placement_percentile']):.2f} | Median Cardmarket: EUR {float(best_value_row['median_cardmarket_deck_price_eur']):.2f}"
+                f"Median Perzentil: {float(best_value_row['median_placement_percentile']):.2f} | Median Deckpreis: EUR {float(best_value_row['median_cardmarket_deck_price_eur']):.2f}"
                 if best_value_row is not None
                 and best_value_row.get("median_placement_percentile") is not None
                 and best_value_row.get("median_cardmarket_deck_price_eur") is not None
-                else "Median Perzentil oder Medianpreis fehlt."
+                else "Median Perzentil oder Median-Deckpreis fehlt."
             ),
         )
 
 
 def _render_plot_section(plot_data: dict[str, object]) -> None:
-    st.subheader("Vergleichsplots")
+    st.subheader("🔍 Vergleichsplots")
     st.caption(
         "Die Scatterplots stellen Popularitaet, Performance und Kosten gegenueber. Der Profilplot darunter verdichtet das Main- und Side-Profil der wichtigsten Decknamen nach dem gewaehlten Ranking-Kriterium."
     )
 
+    with st.container(border=True):
+        selected_y_axis = st.segmented_control(
+            "Y-Achse",
+            options=list(PLOT_Y_AXIS_OPTIONS.keys()),
+            default="Platzierung",
+            key=PLOT_Y_AXIS_METRIC_STATE_KEY,
+            selection_mode="single",
+        )
+
+    if selected_y_axis is None:
+        selected_y_axis = "Platzierung"
+
     plot_col_1, plot_col_2 = st.columns(2)
     with plot_col_1.container(border=True):
         st.markdown("**Popularitaet versus Performance**")
-        st.caption(
-            "X ist der Meta-Anteil, Y das durchschnittliche Platzierungs-Perzentil. Die Bubble-Groesse zeigt die absolute Zahl an Listen, die Farbe den Median der Cardmarket-Kosten."
+        if selected_y_axis == "Platzierung":
+            st.caption(
+                "X ist der Meta-Anteil. Y zeigt die typische Platzierungsstufe, die aus der Ø-Platzierung gebildet wird: Winner, Runner-up, Top 4, Top 8, Top 16. Die Quoten im Tooltip sind davon getrennt und zeigen die echte Haeufigkeit starker Ergebnisse; Top-8-Quote bedeutet zum Beispiel Platz 8 oder besser."
+            )
+        else:
+            st.caption(
+                f"X ist der Meta-Anteil. Y zeigt aktuell die Kennzahl {selected_y_axis}. Hoeher ist besser. Die Tooltip-Werte enthalten weiterhin zusaetzlich die typische Platzierungsstufe aus der Ø-Platzierung und die weiteren Erfolgsquoten."
+            )
+        _render_popularity_performance_scatter(
+            plot_data["scatter_rows"], selected_y_axis
         )
-        _render_popularity_performance_scatter(plot_data["scatter_rows"])
 
     with plot_col_2.container(border=True):
         st.markdown("**Kosten versus Performance**")
-        st.caption(
-            "X ist der Median der Cardmarket-Kosten, Y das durchschnittliche Platzierungs-Perzentil. Bubble-Groesse und Farbe zeigen hier den Meta-Anteil."
-        )
-        _render_cost_performance_scatter(plot_data["cost_rows"])
+        if selected_y_axis == "Platzierung":
+            st.caption(
+                "X ist der Median der Cardmarket-Kosten. Y zeigt wieder die typische Platzierungsstufe aus der Ø-Platzierung. Bubble-Groesse und Farbe zeigen den Meta-Anteil; die Tooltip-Quoten trennen klar zwischen typischer Stufe und tatsaechlicher Winner-/Top-Cut-Haeufigkeit."
+            )
+        else:
+            st.caption(
+                f"X ist der Median der Cardmarket-Kosten. Y zeigt aktuell die Kennzahl {selected_y_axis}. Bubble-Groesse und Farbe zeigen den Meta-Anteil; die Tooltip-Werte liefern zusaetzlich Platzierungsstufe und weitere Erfolgsquoten."
+            )
+        _render_cost_performance_scatter(plot_data["cost_rows"], selected_y_axis)
 
     with st.container(border=True):
         st.markdown("**Deckprofil der wichtigsten Decknamen**")
@@ -1096,9 +1764,11 @@ def _render_plot_section(plot_data: dict[str, object]) -> None:
         _render_deck_profile_chart(plot_data["profile_rows"])
 
 
-def _render_trend_section(plot_data: dict[str, object], bump_ranking_label: str) -> None:
+def _render_trend_section(
+    plot_data: dict[str, object], bump_ranking_label: str
+) -> None:
     trend_rows = plot_data["trend_rows"]
-    st.subheader("Monatliche Entwicklung")
+    st.subheader("📈 Monatliche Entwicklung")
     st.caption(
         "Die Trendansicht verfolgt dieselben Top-N Decknamen wie der Profilplot ueber die Zeit. Sie zeigt Meta-Anteil, Performance, Preis-Drift und Stabilitaet in einer gemeinsamen Monatsansicht."
     )
@@ -1114,7 +1784,7 @@ def _render_trend_section(plot_data: dict[str, object], bump_ranking_label: str)
     with trend_col_2:
         st.markdown("**Performance-Drift nach Monat**")
         st.caption(
-            "Die Linien zeigen das Median Platzierungs-Perzentil pro Monat. Der Tooltip enthaelt zusaetzlich IQR, Monatsanteil und Median Cardmarket, um stabile von swingigen Decks besser zu trennen."
+            "Die Linien zeigen die typische Platzierungsstufe pro Monat auf Basis der Ø-Platzierung. Zwei Punkte auf Top 8 koennen trotzdem unterschiedlich stark sein; deshalb zeigt der Tooltip zusaetzlich die exakte Ø-Platzierung, IQR, Monatsanteil und Median Cardmarket."
         )
         _render_deck_name_performance_drift(trend_rows)
 
@@ -1145,7 +1815,7 @@ def _render_table_section(
     show_extended_metrics: bool,
     trend_series_by_deck_name: dict[str, dict[str, list[float]]],
 ) -> None:
-    st.subheader("Alle aggregierten Decknamen")
+    st.subheader("🏆 Alle aggregierten Decknamen")
     st.caption(
         "Die Tabelle bleibt die Uebersicht. Fuer konkrete Turnierlisten kannst du einen Decknamen direkt an die Decklisten-Seite uebergeben."
     )
@@ -1177,12 +1847,10 @@ def _render_table_section(
 
 
 def main() -> None:
-    st.set_page_config(page_title="Aggregierte Decks", layout="wide")
-
     database_path = resolve_dashboard_db_path()
     repository = DashboardRepository(database_path)
 
-    st.title("Aggregierte Decknamen")
+    st.title("🏆 Aggregierte Decknamen")
 
     status_message = repository.status_message()
     if status_message is not None:
@@ -1200,8 +1868,17 @@ def main() -> None:
         st.warning("Es sind noch keine aggregierbaren Deckdaten vorhanden.")
         st.stop()
 
-    minimum_deck_count, table_ranking_label, profile_top_n, profile_sort_label, bump_ranking_label, show_extended_metrics = _render_control_section()
-    filtered_rows, ranked_rows, highlight_rows = _load_filtered_rows(aggregate_rows, minimum_deck_count, table_ranking_label)
+    (
+        minimum_deck_count,
+        table_ranking_label,
+        profile_top_n,
+        profile_sort_label,
+        bump_ranking_label,
+        show_extended_metrics,
+    ) = _render_control_section()
+    filtered_rows, ranked_rows, highlight_rows = _load_filtered_rows(
+        aggregate_rows, minimum_deck_count, table_ranking_label
+    )
     plot_data = _load_plot_data(
         repository,
         ranked_rows,

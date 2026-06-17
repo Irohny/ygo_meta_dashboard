@@ -6,10 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from .client import YGOProDeckClient
-from .config import CARD_METADATA_BATCH_SIZE, CARD_METADATA_VERSION, DEFAULT_DATABASE_PATH
+from .config import (
+    CARD_METADATA_BATCH_SIZE,
+    CARD_METADATA_VERSION,
+    DEFAULT_DATABASE_PATH,
+)
 from .models import CardRecord
 from .storage import SQLiteStorage
-
 
 _PLACEHOLDER_TEXT_VALUES = {"none", "null", "n/a", "na"}
 
@@ -43,7 +46,9 @@ def enrich_cards_in_storage(
     candidate_rows = storage.list_cards_missing_metadata(limit=limit)
     candidate_count = len(candidate_rows)
     if not candidate_rows:
-        return CardMetadataEnrichmentSummary(candidate_count=0, requested_count=0, enriched_count=0, batch_count=0)
+        return CardMetadataEnrichmentSummary(
+            candidate_count=0, requested_count=0, enriched_count=0, batch_count=0
+        )
 
     owns_client = client is None
     api_client = client or YGOProDeckClient()
@@ -66,7 +71,9 @@ def enrich_cards_in_storage(
             enriched_records.extend(resolved_records)
 
             resolved_ids = {record.card_passcode for record in resolved_records}
-            unresolved_ids = [passcode for passcode in batch_ids if passcode not in resolved_ids]
+            unresolved_ids = [
+                passcode for passcode in batch_ids if passcode not in resolved_ids
+            ]
             if unresolved_ids:
                 unresolved_enriched_at = _utc_now()
                 enriched_records.extend(
@@ -99,7 +106,11 @@ def _to_card_records(card_infos: list[dict[str, Any]]) -> list[CardRecord]:
     for card_info in card_infos:
         passcode = card_info.get("id")
         name = card_info.get("name")
-        if not isinstance(passcode, int) or not isinstance(name, str) or not name.strip():
+        if (
+            not isinstance(passcode, int)
+            or not isinstance(name, str)
+            or not name.strip()
+        ):
             continue
         records.append(
             CardRecord(

@@ -303,7 +303,9 @@ def _render_monthly_non_engine_subrole_chart(rows: list[dict[str, object]]) -> N
     )
 
 
-def _render_section_engine_vs_non_engine_chart(rows: list[dict[str, object]], section: str) -> None:
+def _render_section_engine_vs_non_engine_chart(
+    rows: list[dict[str, object]], section: str
+) -> None:
     section_label = "Main Deck" if section == "main" else "Side Deck"
     chart_rows: list[dict[str, object]] = []
     for row in rows:
@@ -359,7 +361,9 @@ def _render_monthly_top_deck_cost_chart(rows: list[dict[str, object]]) -> None:
                 {
                     "Monat": month_start,
                     "Serie": "Top 10 ergebnisgewichtet",
-                    "Kosten €": float(row["weighted_average_top_10_cardmarket_price_eur"]),
+                    "Kosten €": float(
+                        row["weighted_average_top_10_cardmarket_price_eur"]
+                    ),
                     "Ergebnisse": result_count,
                     "Top Decknamen": top_10_deck_name_count,
                     "Top-10 Share %": top_10_result_share_pct,
@@ -390,7 +394,9 @@ def _load_longterm_page_data(
     return load_longterm_page_data(repository, start_date=start_date, end_date=end_date)
 
 
-def _render_page_intro(trend_rows: list[dict[str, object]], new_deck_name_rows: list[dict[str, object]]) -> None:
+def _render_page_intro(
+    trend_rows: list[dict[str, object]], new_deck_name_rows: list[dict[str, object]]
+) -> None:
     st.markdown(
         "Die Seite aggregiert monatlich ueber alle aktuell gefilterten Decks und kombiniert Deckzusammensetzung, Formatdiversitaet, Metawechsel und Kostenentwicklung. `Engine` umfasst Hauptengine und restliche Engine. `Handtraps`, `Boardbreaker` und die weiteren Unterrollen nutzen dieselbe heuristische Non-Engine-Unterklassifikation wie die anderen Dashboard-Seiten."
     )
@@ -399,7 +405,10 @@ def _render_page_intro(trend_rows: list[dict[str, object]], new_deck_name_rows: 
     )
 
     latest_new_share = None
-    if new_deck_name_rows and new_deck_name_rows[-1]["new_result_share_pct"] is not None:
+    if (
+        new_deck_name_rows
+        and new_deck_name_rows[-1]["new_result_share_pct"] is not None
+    ):
         latest_new_share = float(new_deck_name_rows[-1]["new_result_share_pct"])
 
     _render_metric_group(
@@ -422,7 +431,7 @@ def _render_page_intro(trend_rows: list[dict[str, object]], new_deck_name_rows: 
 
 def _render_main_share_section(trend_rows: list[dict[str, object]]) -> None:
     with st.container(border=True):
-        st.subheader("Monatlicher Main-Deck-Anteil")
+        st.subheader("📈 Monatlicher Main-Deck-Anteil")
         st.caption(
             "Die Linien zeigen monatlich gemittelte Anteile im Main Deck ueber alle aktuell gefilterten Decks. `Engine` umfasst Hauptengine und restliche Engine."
         )
@@ -436,7 +445,9 @@ def _render_main_share_section(trend_rows: list[dict[str, object]]) -> None:
                         "Decks": int(row["deck_count"]),
                         "Ø Engine %": float(row["average_engine_share_pct"]),
                         "Ø Handtraps %": float(row["average_handtrap_share_pct"]),
-                        "Ø Boardbreaker %": float(row["average_boardbreaker_share_pct"]),
+                        "Ø Boardbreaker %": float(
+                            row["average_boardbreaker_share_pct"]
+                        ),
                     }
                     for row in trend_rows
                 ],
@@ -445,9 +456,11 @@ def _render_main_share_section(trend_rows: list[dict[str, object]]) -> None:
             )
 
 
-def _render_section_balance_section(section_trend_rows: list[dict[str, object]]) -> None:
+def _render_section_balance_section(
+    section_trend_rows: list[dict[str, object]],
+) -> None:
     with st.container(border=True):
-        st.subheader("Engine vs Non-Engine nach Deckbereich")
+        st.subheader("🔍 Engine vs Non-Engine nach Deckbereich")
         st.caption(
             "Hier werden fuer Main Deck und Side Deck getrennt die mittleren Monatsanteile von Engine und echter Non-Engine gezeigt."
         )
@@ -464,7 +477,9 @@ def _render_section_balance_section(section_trend_rows: list[dict[str, object]])
                 [
                     {
                         "Monat": str(row["month_start"])[:7],
-                        "Deckbereich": "Main Deck" if row["section"] == "main" else "Side Deck",
+                        "Deckbereich": (
+                            "Main Deck" if row["section"] == "main" else "Side Deck"
+                        ),
                         "Decks": int(row["deck_count"]),
                         "Ø Engine %": float(row["average_engine_share_pct"]),
                         "Ø Non-Engine %": float(row["average_non_engine_share_pct"]),
@@ -478,7 +493,7 @@ def _render_section_balance_section(section_trend_rows: list[dict[str, object]])
 
 def _render_side_share_section(side_trend_rows: list[dict[str, object]]) -> None:
     with st.container(border=True):
-        st.subheader("Monatlicher Side-Deck-Anteil")
+        st.subheader("📈 Monatlicher Side-Deck-Anteil")
         st.caption(
             "Dieser Plot zeigt, wie sich Handtraps, Boardbreaker und `Weitere Non-Engine` im Side Deck ueber die Zeit verschieben."
         )
@@ -491,8 +506,12 @@ def _render_side_share_section(side_trend_rows: list[dict[str, object]]) -> None
                         "Monat": str(row["month_start"])[:7],
                         "Decks": int(row["deck_count"]),
                         "Ø Handtraps %": float(row["average_handtrap_share_pct"]),
-                        "Ø Boardbreaker %": float(row["average_boardbreaker_share_pct"]),
-                        "Ø Weitere Non-Engine %": float(row["average_non_engine_other_share_pct"]),
+                        "Ø Boardbreaker %": float(
+                            row["average_boardbreaker_share_pct"]
+                        ),
+                        "Ø Weitere Non-Engine %": float(
+                            row["average_non_engine_other_share_pct"]
+                        ),
                     }
                     for row in side_trend_rows
                 ],
@@ -503,7 +522,7 @@ def _render_side_share_section(side_trend_rows: list[dict[str, object]]) -> None
 
 def _render_subrole_section(subrole_trend_rows: list[dict[str, object]]) -> None:
     with st.container(border=True):
-        st.subheader("Unterrollen innerhalb von Weitere Non-Engine")
+        st.subheader("🔍 Unterrollen innerhalb von Weitere Non-Engine")
         st.caption(
             "Die Linien zeigen, wie sich Floodgates, Protection und Draw Engine innerhalb des Buckets `Weitere Non-Engine` ueber Main und Side zusammen entwickeln. Unklare Faelle bleiben im Tabellen-Expander sichtbar."
         )
@@ -529,7 +548,7 @@ def _render_subrole_section(subrole_trend_rows: list[dict[str, object]]) -> None
 
 def _render_new_deck_name_section(new_deck_name_rows: list[dict[str, object]]) -> None:
     with st.container(border=True):
-        st.subheader("Anteil neuer Decknamen pro Monat")
+        st.subheader("📈 Anteil neuer Decknamen pro Monat")
         st.caption(
             "Gezeigt wird der Anteil der Monatsergebnisse, die von Decknamen stammen, die im direkt vorherigen verfuegbaren Monat noch nicht vorkamen. Der erste Monat bleibt ohne Vergleichspunkt leer."
         )
@@ -555,7 +574,7 @@ def _render_new_deck_name_section(new_deck_name_rows: list[dict[str, object]]) -
 
 def _render_concentration_section(concentration_rows: list[dict[str, object]]) -> None:
     with st.container(border=True):
-        st.subheader("Formatdiversitaet nach Ergebnisabdeckung")
+        st.subheader("🔍 Formatdiversitaet nach Ergebnisabdeckung")
         st.caption(
             "Die Linien zeigen, wie viele unterschiedliche Decknamen in einem Monat noetig sind, um zusammen 25 %, 50 %, 75 % oder 90 % aller gespeicherten Turnierergebnisse abzudecken. Niedrigere Werte sprechen fuer ein konzentrierteres, hoehere Werte fuer ein diverseres Format."
         )
@@ -582,7 +601,7 @@ def _render_concentration_section(concentration_rows: list[dict[str, object]]) -
 
 def _render_top_deck_cost_section(top_deck_cost_rows: list[dict[str, object]]) -> None:
     with st.container(border=True):
-        st.subheader("Kosten der Top-Decks ueber Zeit")
+        st.subheader("📈 Kosten der Top-Decks ueber Zeit")
         st.caption(
             "Die Top-10-Decknamen werden je Monat nach Ergebnisanteil bestimmt. Der Plot zeigt ihre mittlere Cardmarket-Summe einmal ungewichtet und einmal ergebnisgewichtet."
         )
@@ -595,9 +614,15 @@ def _render_top_deck_cost_section(top_deck_cost_rows: list[dict[str, object]]) -
                         "Monat": str(row["month_start"])[:7],
                         "Ergebnisse": int(row["result_count"]),
                         "Top-10 Decknamen": int(row["top_10_deck_name_count"]),
-                        "Top-10 Ergebnisanteil %": float(row["top_10_result_share_pct"]),
-                        "Ø Top 10 ungewichtet €": float(row["average_top_10_cardmarket_price_eur"]),
-                        "Ø Top 10 ergebnisgewichtet €": float(row["weighted_average_top_10_cardmarket_price_eur"]),
+                        "Top-10 Ergebnisanteil %": float(
+                            row["top_10_result_share_pct"]
+                        ),
+                        "Ø Top 10 ungewichtet €": float(
+                            row["average_top_10_cardmarket_price_eur"]
+                        ),
+                        "Ø Top 10 ergebnisgewichtet €": float(
+                            row["weighted_average_top_10_cardmarket_price_eur"]
+                        ),
                     }
                     for row in top_deck_cost_rows
                 ],
@@ -607,12 +632,10 @@ def _render_top_deck_cost_section(top_deck_cost_rows: list[dict[str, object]]) -
 
 
 def main() -> None:
-    st.set_page_config(page_title="Langzeitdaten", layout="wide")
-
     database_path = resolve_dashboard_db_path()
     repository = DashboardRepository(database_path)
 
-    st.title("Langzeitdaten")
+    st.title("📅 Langzeitdaten")
 
     status_message = repository.status_message()
     if status_message is not None:

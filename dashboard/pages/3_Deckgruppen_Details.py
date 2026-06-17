@@ -4,21 +4,29 @@ from pathlib import Path
 
 import streamlit as st
 
-from ygo_crawler.dashboard_cache import load_deck_name_aggregates_extended, load_group_page_data
+from ygo_crawler.dashboard_cache import (
+    load_deck_name_aggregates_extended,
+    load_group_page_data,
+)
 from ygo_crawler.dashboard_filters import render_dashboard_date_filter
 from ygo_crawler.dashboard_queries import DashboardRepository, resolve_dashboard_db_path
-
 
 DECK_NAME_STATE_KEY = "decklisten_selected_deck_name"
 DECK_INSTANCE_STATE_KEY = "decklisten_selected_deck_id"
 QUERY_PARAM_DECK_NAME = "deck_name"
 QUERY_PARAM_DECK_ID = "deck_id"
 DECKLIST_PAGE_PATH = Path(__file__).with_name("1_Decklisten.py")
+DECKBUILDER_PAGE_PATH = Path(__file__).with_name("6_Deckbuilder.py")
 DECKGROUP_DRILLDOWN_STATE_KEY = "deckgruppen_details_selected_deck_site_id"
+DECKBUILDER_DECK_GROUP_STATE_KEY = "deckbuilder_deck_group"
 
 
-def _drop_columns(rows: list[dict[str, object]], columns: set[str]) -> list[dict[str, object]]:
-    return [{key: value for key, value in row.items() if key not in columns} for row in rows]
+def _drop_columns(
+    rows: list[dict[str, object]], columns: set[str]
+) -> list[dict[str, object]]:
+    return [
+        {key: value for key, value in row.items() if key not in columns} for row in rows
+    ]
 
 
 def _card_table_config() -> dict[str, object]:
@@ -52,7 +60,9 @@ def _component_color(component_type: str, component_index: int) -> str:
 
 def _render_deck_section_share_chart(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer diese Deckgruppe konnte keine Deckbereich-Komposition berechnet werden.")
+        st.info(
+            "Fuer diese Deckgruppe konnte keine Deckbereich-Komposition berechnet werden."
+        )
         return
 
     chart_rows: list[dict[str, object]] = []
@@ -71,7 +81,9 @@ def _render_deck_section_share_chart(rows: list[dict[str, object]]) -> None:
                 engine_index += 1
         chart_rows.append(
             {
-                "Deckbereich": "Main Deck" if str(row["section"]) == "main" else "Side Deck",
+                "Deckbereich": (
+                    "Main Deck" if str(row["section"]) == "main" else "Side Deck"
+                ),
                 "Baustein": component_name,
                 "Anteil %": float(row["share_pct"]),
                 "Ø Kopien / Gruppendeck": float(row["average_copies_per_group_deck"]),
@@ -109,7 +121,11 @@ def _render_deck_section_share_chart(rows: list[dict[str, object]]) -> None:
                     {"field": "Deckbereich", "type": "nominal"},
                     {"field": "Baustein", "type": "nominal"},
                     {"field": "Anteil %", "type": "quantitative", "format": ".1f"},
-                    {"field": "Ø Kopien / Gruppendeck", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Ø Kopien / Gruppendeck",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                 ],
             },
         },
@@ -153,14 +169,18 @@ def _format_cardmarket_range(row: dict[str, object]) -> str:
     return f"EUR {float(p25_value):.2f} - EUR {float(p75_value):.2f}"
 
 
-def _placement_percentile(participants_count: object, placement_sort_value: object) -> float | None:
+def _placement_percentile(
+    participants_count: object, placement_sort_value: object
+) -> float | None:
     if participants_count is None or placement_sort_value is None:
         return None
     participants_total = int(participants_count)
     placement_value = int(placement_sort_value)
     if participants_total <= 0 or placement_value <= 0:
         return None
-    return round((participants_total - placement_value + 1) * 100.0 / participants_total, 2)
+    return round(
+        (participants_total - placement_value + 1) * 100.0 / participants_total, 2
+    )
 
 
 def _date_sort_value(value: object) -> int:
@@ -169,12 +189,19 @@ def _date_sort_value(value: object) -> int:
     return int(str(value).replace("-", ""))
 
 
-def _sorted_deck_instances(rows: list[dict[str, object]], sort_mode: str) -> list[dict[str, object]]:
+def _sorted_deck_instances(
+    rows: list[dict[str, object]], sort_mode: str
+) -> list[dict[str, object]]:
     if sort_mode == "Bestes Platzierungs-Perzentil":
         return sorted(
             rows,
             key=lambda row: (
-                -(_placement_percentile(row.get("participants_count"), row.get("placement_sort_value")) or -1.0),
+                -(
+                    _placement_percentile(
+                        row.get("participants_count"), row.get("placement_sort_value")
+                    )
+                    or -1.0
+                ),
                 -_date_sort_value(row.get("tournament_date")),
                 int(row.get("placement_sort_value") or 99_999),
                 str(row.get("player_name") or ""),
@@ -210,7 +237,9 @@ def _sorted_deck_instances(rows: list[dict[str, object]], sort_mode: str) -> lis
     )
 
 
-def _prepare_deck_instance_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+def _prepare_deck_instance_rows(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
     prepared_rows: list[dict[str, object]] = []
     for row in rows:
         prepared_rows.append(
@@ -240,7 +269,11 @@ def _deck_instance_drilldown_label(row: dict[str, object]) -> str:
         [
             str(row.get("tournament_date") or "-"),
             f"Platz {row.get('placement') or '-'}",
-            _format_percent(_placement_percentile(row.get("participants_count"), row.get("placement_sort_value"))),
+            _format_percent(
+                _placement_percentile(
+                    row.get("participants_count"), row.get("placement_sort_value")
+                )
+            ),
             str(row.get("tournament_name") or "-"),
             str(row.get("player_name") or "-"),
         ]
@@ -259,7 +292,12 @@ def _open_decklist_instance(deck_name: str, deck_site_id: int) -> None:
     )
 
 
-def _render_metric(column: st.delta_generator.DeltaGenerator, label: str, value: str, delta: str | None = None) -> None:
+def _render_metric(
+    column: st.delta_generator.DeltaGenerator,
+    label: str,
+    value: str,
+    delta: str | None = None,
+) -> None:
     if delta is None:
         column.metric(label, value, border=True)
         return
@@ -281,7 +319,9 @@ def _render_metric_group(
 
         for offset in range(0, len(metrics), columns):
             metric_columns = st.columns(columns)
-            for metric_column, (label, value, delta) in zip(metric_columns, metrics[offset : offset + columns]):
+            for metric_column, (label, value, delta) in zip(
+                metric_columns, metrics[offset : offset + columns]
+            ):
                 _render_metric(metric_column, label, value, delta)
 
 
@@ -304,7 +344,11 @@ def _render_aggregated_card_section(
 
     consensus_rows = _rows_above_inclusion(rows, 80.0)
     flex_rows = _rows_in_inclusion_band(rows, 20.0, 80.0)
-    average_inclusion = round(sum(float(row.get("Anteil %") or 0.0) for row in rows) / len(rows), 2) if rows else 0.0
+    average_inclusion = (
+        round(sum(float(row.get("Anteil %") or 0.0) for row in rows) / len(rows), 2)
+        if rows
+        else 0.0
+    )
     highest_inclusion_row = max(
         rows,
         key=lambda row: (
@@ -349,7 +393,9 @@ def _top_non_engine_row(
 ) -> dict[str, object] | None:
     filtered_rows = rows
     if role_label is not None:
-        filtered_rows = [row for row in rows if str(row.get("Rolle") or "-") == role_label]
+        filtered_rows = [
+            row for row in rows if str(row.get("Rolle") or "-") == role_label
+        ]
     if not filtered_rows:
         return None
     return max(
@@ -363,13 +409,17 @@ def _top_non_engine_row(
     )
 
 
-def _non_engine_metric_value(row: dict[str, object] | None, *, value_field: str, formatter: callable) -> str:
+def _non_engine_metric_value(
+    row: dict[str, object] | None, *, value_field: str, formatter: callable
+) -> str:
     if row is None:
         return "-"
     return str(row.get("Karte") or "-")
 
 
-def _non_engine_metric_delta(row: dict[str, object] | None, *, value_field: str, formatter: callable) -> str:
+def _non_engine_metric_delta(
+    row: dict[str, object] | None, *, value_field: str, formatter: callable
+) -> str:
     if row is None:
         return "-"
     return formatter(row.get(value_field))
@@ -378,32 +428,64 @@ def _non_engine_metric_delta(row: dict[str, object] | None, *, value_field: str,
 def _render_non_engine_summary(rows: list[dict[str, object]]) -> None:
     top_inclusion_row = _top_non_engine_row(rows, sort_field="Gruppen-Inklusion %")
     top_side_row = _top_non_engine_row(rows, sort_field="Side >=1 %")
-    top_handtrap_row = _top_non_engine_row(rows, role_label="Handtrap", sort_field="Gruppen-Inklusion %")
-    top_boardbreaker_row = _top_non_engine_row(rows, role_label="Boardbreaker", sort_field="Gruppen-Inklusion %")
+    top_handtrap_row = _top_non_engine_row(
+        rows, role_label="Handtrap", sort_field="Gruppen-Inklusion %"
+    )
+    top_boardbreaker_row = _top_non_engine_row(
+        rows, role_label="Boardbreaker", sort_field="Gruppen-Inklusion %"
+    )
 
     summary_cols = st.columns(4)
     summary_cols[0].metric(
         "Hoechste Inklusion",
-        _non_engine_metric_value(top_inclusion_row, value_field="Gruppen-Inklusion %", formatter=_format_percent),
-        _non_engine_metric_delta(top_inclusion_row, value_field="Gruppen-Inklusion %", formatter=_format_percent),
+        _non_engine_metric_value(
+            top_inclusion_row,
+            value_field="Gruppen-Inklusion %",
+            formatter=_format_percent,
+        ),
+        _non_engine_metric_delta(
+            top_inclusion_row,
+            value_field="Gruppen-Inklusion %",
+            formatter=_format_percent,
+        ),
         delta_color="off",
     )
     summary_cols[1].metric(
         "Staerkster Side-Staple",
-        _non_engine_metric_value(top_side_row, value_field="Side >=1 %", formatter=_format_percent),
-        _non_engine_metric_delta(top_side_row, value_field="Side >=1 %", formatter=_format_percent),
+        _non_engine_metric_value(
+            top_side_row, value_field="Side >=1 %", formatter=_format_percent
+        ),
+        _non_engine_metric_delta(
+            top_side_row, value_field="Side >=1 %", formatter=_format_percent
+        ),
         delta_color="off",
     )
     summary_cols[2].metric(
         "Meistgespielte Handtrap",
-        _non_engine_metric_value(top_handtrap_row, value_field="Gruppen-Inklusion %", formatter=_format_percent),
-        _non_engine_metric_delta(top_handtrap_row, value_field="Gruppen-Inklusion %", formatter=_format_percent),
+        _non_engine_metric_value(
+            top_handtrap_row,
+            value_field="Gruppen-Inklusion %",
+            formatter=_format_percent,
+        ),
+        _non_engine_metric_delta(
+            top_handtrap_row,
+            value_field="Gruppen-Inklusion %",
+            formatter=_format_percent,
+        ),
         delta_color="off",
     )
     summary_cols[3].metric(
         "Meistgespielter Boardbreaker",
-        _non_engine_metric_value(top_boardbreaker_row, value_field="Gruppen-Inklusion %", formatter=_format_percent),
-        _non_engine_metric_delta(top_boardbreaker_row, value_field="Gruppen-Inklusion %", formatter=_format_percent),
+        _non_engine_metric_value(
+            top_boardbreaker_row,
+            value_field="Gruppen-Inklusion %",
+            formatter=_format_percent,
+        ),
+        _non_engine_metric_delta(
+            top_boardbreaker_row,
+            value_field="Gruppen-Inklusion %",
+            formatter=_format_percent,
+        ),
         delta_color="off",
     )
 
@@ -421,8 +503,14 @@ def _render_non_engine_table(rows: list[dict[str, object]], empty_message: str) 
 
     metric_col_1, metric_col_2, metric_col_3 = st.columns(3)
     metric_col_1.metric("Karten", len(rows))
-    metric_col_2.metric("Mit Main-Anteil", sum(1 for row in rows if row["average_main_copies_per_group_deck"] > 0))
-    metric_col_3.metric("Mit Side-Anteil", sum(1 for row in rows if row["average_side_copies_per_group_deck"] > 0))
+    metric_col_2.metric(
+        "Mit Main-Anteil",
+        sum(1 for row in rows if row["average_main_copies_per_group_deck"] > 0),
+    )
+    metric_col_3.metric(
+        "Mit Side-Anteil",
+        sum(1 for row in rows if row["average_side_copies_per_group_deck"] > 0),
+    )
 
     st.dataframe(
         [
@@ -448,18 +536,31 @@ def _render_non_engine_table(rows: list[dict[str, object]], empty_message: str) 
     )
 
 
-def _rows_above_inclusion(rows: list[dict[str, object]], threshold: float) -> list[dict[str, object]]:
+def _rows_above_inclusion(
+    rows: list[dict[str, object]], threshold: float
+) -> list[dict[str, object]]:
     return [row for row in rows if float(row.get("Anteil %") or 0.0) >= threshold]
 
 
-def _rows_in_inclusion_band(rows: list[dict[str, object]], lower_bound: float, upper_bound: float) -> list[dict[str, object]]:
-    return [row for row in rows if lower_bound <= float(row.get("Anteil %") or 0.0) < upper_bound]
+def _rows_in_inclusion_band(
+    rows: list[dict[str, object]], lower_bound: float, upper_bound: float
+) -> list[dict[str, object]]:
+    return [
+        row
+        for row in rows
+        if lower_bound <= float(row.get("Anteil %") or 0.0) < upper_bound
+    ]
 
 
-def _slot_examples(rows: list[dict[str, object]], *, prefix: str | None = None, limit: int = 3) -> str:
+def _slot_examples(
+    rows: list[dict[str, object]], *, prefix: str | None = None, limit: int = 3
+) -> str:
     if not rows:
         return "-"
-    labels = [f"{prefix}: {row['Karte']}" if prefix else str(row["Karte"]) for row in rows[:limit]]
+    labels = [
+        f"{prefix}: {row['Karte']}" if prefix else str(row["Karte"])
+        for row in rows[:limit]
+    ]
     return ", ".join(labels)
 
 
@@ -478,19 +579,49 @@ def _render_group_profile_summary(
 
     main_core_rows = _rows_above_inclusion(main_rows, core_threshold)
     side_core_rows = _rows_above_inclusion(side_rows, core_threshold)
-    main_flex_rows = _rows_in_inclusion_band(main_rows, flex_lower_bound, core_threshold)
-    side_flex_rows = _rows_in_inclusion_band(side_rows, flex_lower_bound, core_threshold)
+    main_flex_rows = _rows_in_inclusion_band(
+        main_rows, flex_lower_bound, core_threshold
+    )
+    side_flex_rows = _rows_in_inclusion_band(
+        side_rows, flex_lower_bound, core_threshold
+    )
 
     _render_metric_group(
         st.container(),
         "Main- und Side-Verteilung",
         [
-            ("Main Engine %", _format_percent(benchmarks.get("average_main_engine_share_pct")), None),
-            ("Main Non-Engine %", _format_percent(benchmarks.get("average_main_non_engine_share_pct")), None),
-            ("Side Non-Engine %", _format_percent(benchmarks.get("average_side_non_engine_share_pct")), None),
-            ("Side Handtraps %", _format_percent(benchmarks.get("average_side_handtrap_share_pct")), None),
-            ("Side Boardbreaker %", _format_percent(benchmarks.get("average_side_boardbreaker_share_pct")), None),
-            ("Side Weitere NE %", _format_percent(benchmarks.get("average_side_non_engine_other_share_pct")), None),
+            (
+                "Main Engine %",
+                _format_percent(benchmarks.get("average_main_engine_share_pct")),
+                None,
+            ),
+            (
+                "Main Non-Engine %",
+                _format_percent(benchmarks.get("average_main_non_engine_share_pct")),
+                None,
+            ),
+            (
+                "Side Non-Engine %",
+                _format_percent(benchmarks.get("average_side_non_engine_share_pct")),
+                None,
+            ),
+            (
+                "Side Handtraps %",
+                _format_percent(benchmarks.get("average_side_handtrap_share_pct")),
+                None,
+            ),
+            (
+                "Side Boardbreaker %",
+                _format_percent(benchmarks.get("average_side_boardbreaker_share_pct")),
+                None,
+            ),
+            (
+                "Side Weitere NE %",
+                _format_percent(
+                    benchmarks.get("average_side_non_engine_other_share_pct")
+                ),
+                None,
+            ),
         ],
         columns=3,
     )
@@ -500,7 +631,11 @@ def _render_group_profile_summary(
         [
             ("Main-Core-Karten", str(len(main_core_rows)), None),
             ("Side-Core-Karten", str(len(side_core_rows)), None),
-            ("Flex-Slots Main+Side", str(len(main_flex_rows) + len(side_flex_rows)), None),
+            (
+                "Flex-Slots Main+Side",
+                str(len(main_flex_rows) + len(side_flex_rows)),
+                None,
+            ),
         ],
         columns=3,
     )
@@ -579,12 +714,32 @@ def _render_group_trend_chart(
                 },
                 "tooltip": [
                     {"field": "Monat", "type": "temporal", "format": "%Y-%m"},
-                    {"field": value_label, "type": "quantitative", "format": value_format},
-                    {"field": "Decks der Gruppe", "type": "quantitative", "format": ".0f"},
-                    {"field": "Decks im Monat gesamt", "type": "quantitative", "format": ".0f"},
+                    {
+                        "field": value_label,
+                        "type": "quantitative",
+                        "format": value_format,
+                    },
+                    {
+                        "field": "Decks der Gruppe",
+                        "type": "quantitative",
+                        "format": ".0f",
+                    },
+                    {
+                        "field": "Decks im Monat gesamt",
+                        "type": "quantitative",
+                        "format": ".0f",
+                    },
                     {"field": "Meta-Anteil %", "type": "quantitative", "format": ".2f"},
-                    {"field": "Median Platzierungs-Perzentil", "type": "quantitative", "format": ".2f"},
-                    {"field": "Median Cardmarket EUR", "type": "quantitative", "format": ".2f"},
+                    {
+                        "field": "Median Platzierungs-Perzentil",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
+                    {
+                        "field": "Median Cardmarket EUR",
+                        "type": "quantitative",
+                        "format": ".2f",
+                    },
                 ],
             },
         },
@@ -594,7 +749,9 @@ def _render_group_trend_chart(
 
 def _render_group_trend_section(rows: list[dict[str, object]]) -> None:
     if not rows:
-        st.info("Fuer die aktuelle Deckgruppe konnten im aktiven Zeitraum keine Monats-Trends berechnet werden.")
+        st.info(
+            "Fuer die aktuelle Deckgruppe konnten im aktiven Zeitraum keine Monats-Trends berechnet werden."
+        )
         return
 
     latest_row = rows[-1]
@@ -609,13 +766,19 @@ def _render_group_trend_section(rows: list[dict[str, object]]) -> None:
     trend_cols[0].metric(
         "Decks der Gruppe im Monat",
         int(latest_row["deck_count"]),
-        _trend_delta_count(latest_row.get("deck_count"), previous_row.get("deck_count") if previous_row else None),
+        _trend_delta_count(
+            latest_row.get("deck_count"),
+            previous_row.get("deck_count") if previous_row else None,
+        ),
         delta_color="off",
     )
     trend_cols[1].metric(
         "Meta-Anteil im Monat",
         _format_percent(latest_row.get("meta_share_pct")),
-        _trend_delta_points(latest_row.get("meta_share_pct"), previous_row.get("meta_share_pct") if previous_row else None),
+        _trend_delta_points(
+            latest_row.get("meta_share_pct"),
+            previous_row.get("meta_share_pct") if previous_row else None,
+        ),
         delta_color="off",
     )
     trend_cols[2].metric(
@@ -632,7 +795,11 @@ def _render_group_trend_section(rows: list[dict[str, object]]) -> None:
         _format_currency(latest_row.get("median_cardmarket_deck_price_eur"), "€"),
         _trend_delta_currency(
             latest_row.get("median_cardmarket_deck_price_eur"),
-            previous_row.get("median_cardmarket_deck_price_eur") if previous_row else None,
+            (
+                previous_row.get("median_cardmarket_deck_price_eur")
+                if previous_row
+                else None
+            ),
         ),
         delta_color="off",
     )
@@ -646,7 +813,9 @@ def _render_group_trend_section(rows: list[dict[str, object]]) -> None:
         delta_color="off",
     )
 
-    meta_tab, performance_tab, price_tab = st.tabs(["Meta-Anteil", "Performance", "Cardmarket"])
+    meta_tab, performance_tab, price_tab = st.tabs(
+        ["Meta-Anteil", "Performance", "Cardmarket"]
+    )
 
     with meta_tab:
         _render_group_trend_chart(
@@ -684,11 +853,17 @@ def _render_group_trend_section(rows: list[dict[str, object]]) -> None:
 
 def _render_selection_section(aggregate_options: list[str]) -> str:
     default_deck_name = st.session_state.get("selected_aggregated_deck_name")
-    default_index = aggregate_options.index(default_deck_name) if default_deck_name in aggregate_options else 0
+    default_index = (
+        aggregate_options.index(default_deck_name)
+        if default_deck_name in aggregate_options
+        else 0
+    )
 
     with st.container(border=True):
         st.markdown("**Deckgruppe**")
-        st.caption("Die Auswahl steuert alle Kennzahlen, Profile und Drilldowns fuer die gewaehlte Gruppe im aktuellen Zeitraum.")
+        st.caption(
+            "Die Auswahl steuert alle Kennzahlen, Profile und Drilldowns fuer die gewaehlte Gruppe im aktuellen Zeitraum."
+        )
         selected_deck_name = st.selectbox(
             "Deckgruppe auswählen",
             options=aggregate_options,
@@ -719,7 +894,7 @@ def _render_overview_section(selected_aggregate: dict[str, object]) -> None:
     )
 
     _render_section_header(
-        "Uebersicht",
+        "🏆 Uebersicht",
         "Die wichtigsten Gruppenkennzahlen stehen zuerst im Fokus. Rohwerte, normalisierte Performance und Preisniveau werden bewusst getrennt dargestellt.",
     )
 
@@ -731,9 +906,21 @@ def _render_overview_section(selected_aggregate: dict[str, object]) -> None:
             ("Decks absolut", str(int(selected_aggregate["deck_count"])), None),
             ("Turniere", str(int(selected_aggregate["tournament_count"])), None),
             ("Spieler", str(int(selected_aggregate["player_count"])), None),
-            ("Meta-Anteil %", _format_percent(selected_aggregate.get("meta_share_pct")), None),
-            ("Turnierabdeckung %", _format_percent(selected_aggregate.get("tournament_coverage_pct")), None),
-            ("Diversitaet %", _format_ratio_percent(selected_aggregate.get("player_diversity_ratio")), None),
+            (
+                "Meta-Anteil %",
+                _format_percent(selected_aggregate.get("meta_share_pct")),
+                None,
+            ),
+            (
+                "Turnierabdeckung %",
+                _format_percent(selected_aggregate.get("tournament_coverage_pct")),
+                None,
+            ),
+            (
+                "Diversitaet %",
+                _format_ratio_percent(selected_aggregate.get("player_diversity_ratio")),
+                None,
+            ),
         ],
         columns=2,
     )
@@ -741,12 +928,36 @@ def _render_overview_section(selected_aggregate: dict[str, object]) -> None:
         overview_col_2,
         "Performance und Resultate",
         [
-            ("Median Perzentil", _format_percent(selected_aggregate.get("median_placement_percentile")), None),
-            ("Ø Perzentil", _format_percent(selected_aggregate.get("average_placement_percentile")), None),
-            ("Top-25 %", _format_percent(selected_aggregate.get("top_25_finish_rate_pct")), None),
-            ("Performance-IQR", _format_percent(selected_aggregate.get("placement_percentile_iqr")), None),
-            ("Ø Platzierung", _format_number(selected_aggregate.get("average_placement")), None),
-            ("30-Tage-Resultate %", _format_percent(selected_aggregate.get("recent_30d_result_share_pct")), None),
+            (
+                "Median Perzentil",
+                _format_percent(selected_aggregate.get("median_placement_percentile")),
+                None,
+            ),
+            (
+                "Ø Perzentil",
+                _format_percent(selected_aggregate.get("average_placement_percentile")),
+                None,
+            ),
+            (
+                "Top-25 %",
+                _format_percent(selected_aggregate.get("top_25_finish_rate_pct")),
+                None,
+            ),
+            (
+                "Performance-IQR",
+                _format_percent(selected_aggregate.get("placement_percentile_iqr")),
+                None,
+            ),
+            (
+                "Ø Platzierung",
+                _format_number(selected_aggregate.get("average_placement")),
+                None,
+            ),
+            (
+                "30-Tage-Resultate %",
+                _format_percent(selected_aggregate.get("recent_30d_result_share_pct")),
+                None,
+            ),
         ],
         columns=2,
     )
@@ -756,13 +967,43 @@ def _render_overview_section(selected_aggregate: dict[str, object]) -> None:
         detail_col_1,
         "Deckstruktur und Kosten",
         [
-            ("Ø Teilnehmer", _format_number(selected_aggregate.get("average_participants_count")), None),
-            ("Ø Main", _format_number(selected_aggregate.get("average_main_card_total")), None),
-            ("Ø Extra", _format_number(selected_aggregate.get("average_extra_card_total")), None),
-            ("Ø Side", _format_number(selected_aggregate.get("average_side_card_total")), None),
-            ("Median Cardmarket €", _format_currency(selected_aggregate.get("median_cardmarket_deck_price_eur"), "€"), None),
-            ("P25-P75 Cardmarket €", _format_cardmarket_range(selected_aggregate), None),
-            ("Ø TCG Preis", _format_currency(selected_aggregate.get("average_tcg_price_usd"), "$"), None),
+            (
+                "Ø Teilnehmer",
+                _format_number(selected_aggregate.get("average_participants_count")),
+                None,
+            ),
+            (
+                "Ø Main",
+                _format_number(selected_aggregate.get("average_main_card_total")),
+                None,
+            ),
+            (
+                "Ø Extra",
+                _format_number(selected_aggregate.get("average_extra_card_total")),
+                None,
+            ),
+            (
+                "Ø Side",
+                _format_number(selected_aggregate.get("average_side_card_total")),
+                None,
+            ),
+            (
+                "Median Cardmarket €",
+                _format_currency(
+                    selected_aggregate.get("median_cardmarket_deck_price_eur"), "€"
+                ),
+                None,
+            ),
+            (
+                "P25-P75 Cardmarket €",
+                _format_cardmarket_range(selected_aggregate),
+                None,
+            ),
+            (
+                "Ø TCG Preis",
+                _format_currency(selected_aggregate.get("average_tcg_price_usd"), "$"),
+                None,
+            ),
         ],
         columns=2,
     )
@@ -770,10 +1011,26 @@ def _render_overview_section(selected_aggregate: dict[str, object]) -> None:
         detail_col_2,
         "Historie und Kontext",
         [
-            ("Erstes Auftreten", str(selected_aggregate.get("first_seen_date") or "-"), None),
-            ("Letztes Auftreten", str(selected_aggregate.get("last_seen_date") or "-"), None),
-            ("Beste Platzierung", _format_number(selected_aggregate.get("best_placement")), None),
-            ("Schlechteste Platzierung", _format_number(selected_aggregate.get("worst_placement")), None),
+            (
+                "Erstes Auftreten",
+                str(selected_aggregate.get("first_seen_date") or "-"),
+                None,
+            ),
+            (
+                "Letztes Auftreten",
+                str(selected_aggregate.get("last_seen_date") or "-"),
+                None,
+            ),
+            (
+                "Beste Platzierung",
+                _format_number(selected_aggregate.get("best_placement")),
+                None,
+            ),
+            (
+                "Schlechteste Platzierung",
+                _format_number(selected_aggregate.get("worst_placement")),
+                None,
+            ),
         ],
         columns=2,
     )
@@ -786,7 +1043,7 @@ def _render_card_profile_section(
 ) -> None:
     st.divider()
     _render_section_header(
-        "Kartenprofil",
+        "📋 Kartenprofil",
         "Zuerst die Gruppenzusammensetzung, darunter die konsolidierten Main-, Extra- und Side-Karten. Die Kartenlisten sind in Tabs getrennt, damit die Seite nicht in drei parallelen Volltabellen zerfaellt.",
     )
     st.markdown("**Profil-KPIs**")
@@ -832,7 +1089,7 @@ def _render_generic_cards_section(
 ) -> None:
     st.divider()
     _render_section_header(
-        "Generische Karten",
+        "🔍 Generische Karten",
         "Diese Analyse zeigt nur global als generisch erkannte Karten, deren Kennzahlen aber ausschliesslich auf der aktuell gewaehlten Deckgruppe basieren.",
     )
     with st.expander("Wie die Kennzahlen in dieser Sektion zu lesen sind"):
@@ -843,7 +1100,10 @@ def _render_generic_cards_section(
     non_engine_tab, splash_tab = st.tabs(["Non-Engine", "Candidate Splash"])
 
     with non_engine_tab:
-        _render_non_engine_table(group_non_engine_cards, "In dieser Deckgruppe wurden noch keine Karten als Non-Engine klassifiziert.")
+        _render_non_engine_table(
+            group_non_engine_cards,
+            "In dieser Deckgruppe wurden noch keine Karten als Non-Engine klassifiziert.",
+        )
 
     with splash_tab:
         _render_non_engine_table(
@@ -855,16 +1115,18 @@ def _render_generic_cards_section(
 def _render_trend_section(deck_group_trend_rows: list[dict[str, object]]) -> None:
     st.divider()
     _render_section_header(
-        "Monatlicher Trend",
+        "📈 Monatlicher Trend",
         "Diese optionale Sektion zeigt die Entwicklung der aktuell gewaehlten Deckgruppe ueber den gefilterten Zeitraum, ohne den Kopfbereich weiter aufzublaehen.",
     )
     _render_group_trend_section(deck_group_trend_rows)
 
 
-def _render_deck_instances_section(selected_deck_name: str, deck_instances: list[dict[str, object]]) -> None:
+def _render_deck_instances_section(
+    selected_deck_name: str, deck_instances: list[dict[str, object]]
+) -> None:
     st.divider()
     _render_section_header(
-        "Einzeldecks",
+        "📋 Einzeldecks",
         "Am Ende stehen die konkreten Turnierlisten der Gruppe als Drilldown. Die Tabelle bleibt bewusst roh genug, um direkt zu Performance, Datum und Preis zu springen.",
     )
     control_col_1, control_col_2 = st.columns((1, 1))
@@ -872,31 +1134,53 @@ def _render_deck_instances_section(selected_deck_name: str, deck_instances: list
         st.markdown("**Sortierung**")
         deck_instance_sort_mode = st.selectbox(
             "Einzeldecks sortieren nach",
-            options=["Neueste Listen", "Bestes Platzierungs-Perzentil", "Niedrigste Cardmarket Summe", "Hoechste Cardmarket Summe"],
+            options=[
+                "Neueste Listen",
+                "Bestes Platzierungs-Perzentil",
+                "Niedrigste Cardmarket Summe",
+                "Hoechste Cardmarket Summe",
+            ],
             index=0,
         )
-        st.caption("Steuert nur die Reihenfolge der folgenden Listen, nicht die zugrunde liegende Filtermenge.")
+        st.caption(
+            "Steuert nur die Reihenfolge der folgenden Listen, nicht die zugrunde liegende Filtermenge."
+        )
 
-    sorted_deck_instances = _sorted_deck_instances(deck_instances, deck_instance_sort_mode)
+    sorted_deck_instances = _sorted_deck_instances(
+        deck_instances, deck_instance_sort_mode
+    )
     prepared_deck_instances = _prepare_deck_instance_rows(sorted_deck_instances)
 
-    deck_instance_option_ids = [int(row["deck_site_id"]) for row in sorted_deck_instances]
+    deck_instance_option_ids = [
+        int(row["deck_site_id"]) for row in sorted_deck_instances
+    ]
     with control_col_2.container(border=True):
         st.markdown("**Decklisten-Drilldown**")
         if deck_instance_option_ids:
-            if st.session_state.get(DECKGROUP_DRILLDOWN_STATE_KEY) not in deck_instance_option_ids:
-                st.session_state[DECKGROUP_DRILLDOWN_STATE_KEY] = deck_instance_option_ids[0]
+            if (
+                st.session_state.get(DECKGROUP_DRILLDOWN_STATE_KEY)
+                not in deck_instance_option_ids
+            ):
+                st.session_state[DECKGROUP_DRILLDOWN_STATE_KEY] = (
+                    deck_instance_option_ids[0]
+                )
 
             selected_drilldown_deck_id = st.selectbox(
                 "Instanz fuer Decklisten-Drilldown",
                 options=deck_instance_option_ids,
                 format_func=lambda deck_id: _deck_instance_drilldown_label(
-                    next(row for row in sorted_deck_instances if int(row["deck_site_id"]) == int(deck_id))
+                    next(
+                        row
+                        for row in sorted_deck_instances
+                        if int(row["deck_site_id"]) == int(deck_id)
+                    )
                 ),
                 key=DECKGROUP_DRILLDOWN_STATE_KEY,
             )
             if st.button("Zur Deckliste"):
-                _open_decklist_instance(selected_deck_name, int(selected_drilldown_deck_id))
+                _open_decklist_instance(
+                    selected_deck_name, int(selected_drilldown_deck_id)
+                )
         else:
             st.info("Keine Deckinstanzen im aktuellen Zeitraum verfuegbar.")
 
@@ -911,12 +1195,10 @@ def _render_deck_instances_section(selected_deck_name: str, deck_instances: list
 
 
 def main() -> None:
-    st.set_page_config(page_title="Deckgruppen Details", layout="wide")
-
     database_path = resolve_dashboard_db_path()
     repository = DashboardRepository(database_path)
 
-    st.title("Deckgruppen Details")
+    st.title("🔍 Deckgruppen Details")
 
     status_message = repository.status_message()
     if status_message is not None:
@@ -934,8 +1216,18 @@ def main() -> None:
         st.warning("Es sind noch keine aggregierbaren Deckdaten vorhanden.")
         st.stop()
 
-    selected_deck_name = _render_selection_section([str(row["deck_name"]) for row in aggregate_rows])
-    page_data = _load_group_page_data(repository, selected_deck_name, start_date, end_date)
+    selected_deck_name = _render_selection_section(
+        [str(row["deck_name"]) for row in aggregate_rows]
+    )
+    link_col_1, link_col_2 = st.columns((2, 3))
+    link_col_1.markdown("**Deckgruppen Details**")
+    if link_col_2.button("Deckbuilder fuer diese Deckgruppe oeffnen"):
+        st.session_state[DECKBUILDER_DECK_GROUP_STATE_KEY] = selected_deck_name
+        st.switch_page(str(DECKBUILDER_PAGE_PATH))
+
+    page_data = _load_group_page_data(
+        repository, selected_deck_name, start_date, end_date
+    )
     selected_aggregate = page_data["selected_aggregate"]
     if selected_aggregate is None:
         st.error("Die ausgewählte Deckgruppe konnte nicht geladen werden.")

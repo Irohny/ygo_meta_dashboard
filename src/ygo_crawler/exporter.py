@@ -6,7 +6,6 @@ from pathlib import Path
 
 from .config import DEFAULT_DATABASE_PATH
 
-
 _DECK_CARDS_EXPORT_SQL = """
     SELECT
         t.tournament_date,

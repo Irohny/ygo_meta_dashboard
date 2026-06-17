@@ -5,7 +5,14 @@ import re
 
 from bs4 import BeautifulSoup
 
-from .common import absolute_url, extract_slug_and_site_id, parse_price_usd, parse_placement, normalize_whitespace, strip_flag_emoji
+from .common import (
+    absolute_url,
+    extract_slug_and_site_id,
+    parse_price_usd,
+    parse_placement,
+    normalize_whitespace,
+    strip_flag_emoji,
+)
 
 _SUBTITLE_RE = re.compile(
     r"(?P<date>\d{4}-\d{2}-\d{2})\s*-\s*(?P<country>.+?)\s*-\s*(?P<participants>\d+)\s+Duelists\s*-\s*(?P<tier>.+)",
@@ -51,8 +58,12 @@ def parse_tournament_page(html: str, url: str) -> ParsedTournamentPage:
     )
 
     subtitle_element = soup.select_one("small.d-block.text-muted.ml-1.mt-2")
-    subtitle_text = normalize_whitespace(subtitle_element.get_text(" ", strip=True) if subtitle_element else "")
-    tournament_name = _extract_tournament_name(subtitle_element, subtitle_text, meta_description)
+    subtitle_text = normalize_whitespace(
+        subtitle_element.get_text(" ", strip=True) if subtitle_element else ""
+    )
+    tournament_name = _extract_tournament_name(
+        subtitle_element, subtitle_text, meta_description
+    )
 
     subtitle_match = _SUBTITLE_RE.search(subtitle_text)
     if subtitle_match is None:
@@ -76,9 +87,16 @@ def parse_tournament_page(html: str, url: str) -> ParsedTournamentPage:
     )
 
 
-def _extract_tournament_name(subtitle_element: object, subtitle_text: str, meta_description: str) -> str:
-    if subtitle_element is not None and getattr(subtitle_element, "parent", None) is not None:
-        container_text = normalize_whitespace(subtitle_element.parent.get_text(" ", strip=True))
+def _extract_tournament_name(
+    subtitle_element: object, subtitle_text: str, meta_description: str
+) -> str:
+    if (
+        subtitle_element is not None
+        and getattr(subtitle_element, "parent", None) is not None
+    ):
+        container_text = normalize_whitespace(
+            subtitle_element.parent.get_text(" ", strip=True)
+        )
         if subtitle_text and container_text.endswith(subtitle_text):
             candidate = normalize_whitespace(container_text[: -len(subtitle_text)])
             if candidate:
@@ -100,7 +118,10 @@ def _parse_entries(soup: BeautifulSoup) -> list[ParsedTournamentEntry]:
     current_placement: tuple[str, int, int | None] | None = None
 
     for row in soup.select("a.tournament_table_row"):
-        cells = [normalize_whitespace(cell.get_text(" ", strip=True)) for cell in row.select("span.as-tablecell")]
+        cells = [
+            normalize_whitespace(cell.get_text(" ", strip=True))
+            for cell in row.select("span.as-tablecell")
+        ]
         cells = [cell for cell in cells if cell]
         if len(cells) < 2:
             continue
@@ -117,8 +138,14 @@ def _parse_entries(soup: BeautifulSoup) -> list[ParsedTournamentEntry]:
         player_name = strip_flag_emoji(cells[player_index])
         archetype_index = player_index + 1
         price_index = player_index + 2
-        archetype_text = cells[archetype_index] if len(cells) > archetype_index else None
-        trailing_text = " ".join(cells[price_index:]) if len(cells) > price_index else row.get_text(" ", strip=True)
+        archetype_text = (
+            cells[archetype_index] if len(cells) > archetype_index else None
+        )
+        trailing_text = (
+            " ".join(cells[price_index:])
+            if len(cells) > price_index
+            else row.get_text(" ", strip=True)
+        )
         deck_price_usd = parse_price_usd(trailing_text)
 
         deck_url = absolute_url(row.get("data-deckurl") or row.get("href"))

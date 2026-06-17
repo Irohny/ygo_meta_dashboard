@@ -19,13 +19,21 @@ from .models import (
 
 
 class SQLiteStorage:
-    def __init__(self, database_path: str | Path, schema_path: str | Path | None = None) -> None:
+    def __init__(
+        self, database_path: str | Path, schema_path: str | Path | None = None
+    ) -> None:
         self.database_path = Path(database_path)
-        self.schema_path = Path(schema_path) if schema_path is not None else self._default_schema_path()
+        self.schema_path = (
+            Path(schema_path)
+            if schema_path is not None
+            else self._default_schema_path()
+        )
         self._connection: sqlite3.Connection | None = None
 
     def _default_schema_path(self) -> Path:
-        return Path(__file__).resolve().parents[2] / "plans" / "ygoprodeck-tcg-schema.sql"
+        return (
+            Path(__file__).resolve().parents[2] / "plans" / "ygoprodeck-tcg-schema.sql"
+        )
 
     @property
     def connection(self) -> sqlite3.Connection:
@@ -65,11 +73,15 @@ class SQLiteStorage:
             connection.executescript(schema_sql)
             self._ensure_cards_metadata_columns(connection)
 
-    def fetch_all(self, query: str, parameters: Sequence[Any] | None = None) -> list[sqlite3.Row]:
+    def fetch_all(
+        self, query: str, parameters: Sequence[Any] | None = None
+    ) -> list[sqlite3.Row]:
         cursor = self.connection.execute(query, parameters or ())
         return cursor.fetchall()
 
-    def fetch_one(self, query: str, parameters: Sequence[Any] | None = None) -> sqlite3.Row | None:
+    def fetch_one(
+        self, query: str, parameters: Sequence[Any] | None = None
+    ) -> sqlite3.Row | None:
         cursor = self.connection.execute(query, parameters or ())
         return cursor.fetchone()
 
@@ -198,7 +210,11 @@ class SQLiteStorage:
                   AND placement_sort_value = ?
                   AND player_name = ?
                 """,
-                (record.tournament_site_id, record.placement_sort_value, record.player_name),
+                (
+                    record.tournament_site_id,
+                    record.placement_sort_value,
+                    record.player_name,
+                ),
             ).fetchone()
             deck_row = None
             if record.deck_site_id is not None:
@@ -432,7 +448,9 @@ class SQLiteStorage:
                 payload,
             )
 
-    def list_cards_missing_metadata(self, limit: int | None = None) -> list[sqlite3.Row]:
+    def list_cards_missing_metadata(
+        self, limit: int | None = None
+    ) -> list[sqlite3.Row]:
         query = """
             SELECT
                 card_passcode,
@@ -447,14 +465,18 @@ class SQLiteStorage:
             parameters = (CARD_METADATA_VERSION, limit)
         return self.fetch_all(query, parameters)
 
-    def replace_deck_cards(self, deck_site_id: int, records: Iterable[DeckCardRecord]) -> None:
+    def replace_deck_cards(
+        self, deck_site_id: int, records: Iterable[DeckCardRecord]
+    ) -> None:
         payload = [asdict(record) for record in records]
         mismatched = [row for row in payload if row["deck_site_id"] != deck_site_id]
         if mismatched:
             raise ValueError("All deck card records must target the same deck_site_id")
 
         with self.transaction() as connection:
-            connection.execute("DELETE FROM deck_cards WHERE deck_site_id = ?", (deck_site_id,))
+            connection.execute(
+                "DELETE FROM deck_cards WHERE deck_site_id = ?", (deck_site_id,)
+            )
             if payload:
                 connection.executemany(
                     """
@@ -501,15 +523,13 @@ class SQLiteStorage:
             return int(cursor.lastrowid)
 
     def list_tables_and_views(self) -> list[str]:
-        rows = self.fetch_all(
-            """
+        rows = self.fetch_all("""
             SELECT name
             FROM sqlite_master
             WHERE type IN ('table', 'view')
               AND name NOT LIKE 'sqlite_%'
             ORDER BY type, name
-            """
-        )
+            """)
         return [str(row["name"]) for row in rows]
 
     def _ensure_cards_metadata_columns(self, connection: sqlite3.Connection) -> None:
@@ -529,6 +549,10 @@ class SQLiteStorage:
         }
         for column_name, column_type in required_columns.items():
             if column_name not in existing_columns:
-                connection.execute(f"ALTER TABLE cards ADD COLUMN {column_name} {column_type}")
+                connection.execute(
+                    f"ALTER TABLE cards ADD COLUMN {column_name} {column_type}"
+                )
         if "metadata_version" not in existing_columns:
-            connection.execute("ALTER TABLE cards ADD COLUMN metadata_version INTEGER NOT NULL DEFAULT 0")
+            connection.execute(
+                "ALTER TABLE cards ADD COLUMN metadata_version INTEGER NOT NULL DEFAULT 0"
+            )

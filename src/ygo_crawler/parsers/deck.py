@@ -68,9 +68,15 @@ def parse_deck_page(html: str, url: str) -> ParsedDeckPage:
 
     metadata_spans = list(soup.select("span.deck-metadata-child"))
     author_link = soup.select_one("a[href*='/author/']")
-    author_name = normalize_whitespace(author_link.get_text(" ", strip=True)) or None if author_link else None
+    author_name = (
+        normalize_whitespace(author_link.get_text(" ", strip=True)) or None
+        if author_link
+        else None
+    )
 
-    metadata_texts = [normalize_whitespace(span.get_text(" ", strip=True)) for span in metadata_spans]
+    metadata_texts = [
+        normalize_whitespace(span.get_text(" ", strip=True)) for span in metadata_spans
+    ]
     uploaded_at = _extract_uploaded_at(metadata_texts)
     tournament_metadata = _extract_tournament_metadata(metadata_spans)
     tcg_price_usd = _extract_tcg_price_usd(soup)
@@ -200,7 +206,9 @@ def _extract_card_name(anchor: Tag) -> str | None:
     return None
 
 
-def _extract_tournament_metadata(metadata_spans: list[Tag]) -> dict[str, str | int | None]:
+def _extract_tournament_metadata(
+    metadata_spans: list[Tag],
+) -> dict[str, str | int | None]:
     placement_label: str | None = None
     placement_sort_value: int | None = None
     placement_group_size: int | None = None
@@ -220,20 +228,33 @@ def _extract_tournament_metadata(metadata_spans: list[Tag]) -> dict[str, str | i
         if tournament_anchor is not None:
             bold_elements = span.select("b")
             if bold_elements:
-                placement_label = normalize_whitespace(bold_elements[0].get_text(" ", strip=True)) or None
+                placement_label = (
+                    normalize_whitespace(bold_elements[0].get_text(" ", strip=True))
+                    or None
+                )
                 if placement_label:
-                    placement_label, placement_sort_value, placement_group_size = parse_placement(placement_label)
+                    placement_label, placement_sort_value, placement_group_size = (
+                        parse_placement(placement_label)
+                    )
 
-            tournament_name = normalize_whitespace(tournament_anchor.get_text(" ", strip=True)) or None
+            tournament_name = (
+                normalize_whitespace(tournament_anchor.get_text(" ", strip=True))
+                or None
+            )
             tournament_url = absolute_url(tournament_anchor.get("href"))
             if tournament_url is not None:
-                tournament_slug, tournament_site_id = extract_slug_and_site_id(tournament_url)
+                tournament_slug, tournament_site_id = extract_slug_and_site_id(
+                    tournament_url
+                )
             continue
 
         if "piloted by" in text:
             player_anchor = span.select_one("a[href*='/tournaments/by-player/']")
             if player_anchor is not None:
-                player_name = normalize_whitespace(player_anchor.get_text(" ", strip=True)) or None
+                player_name = (
+                    normalize_whitespace(player_anchor.get_text(" ", strip=True))
+                    or None
+                )
             continue
 
         if text.lower() == "pilot unknown":

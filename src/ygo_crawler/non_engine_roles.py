@@ -145,7 +145,10 @@ def classify_non_engine_role(
 
     if "trap" in normalized_type and "from your hand" in normalized_text:
         scores["handtrap"] += 2.5
-    if "trap" in normalized_type and "activate this card from your hand" in normalized_text:
+    if (
+        "trap" in normalized_type
+        and "activate this card from your hand" in normalized_text
+    ):
         scores["handtrap"] += 4.0
 
     if normalized_race == "continuous":
@@ -160,29 +163,51 @@ def classify_non_engine_role(
     if normalized_name.startswith("pot of "):
         scores["draw_engine"] += 4.0
 
-    if normalized_frame in {"spell", "trap"} and "your opponent controls" in normalized_text:
+    if (
+        normalized_frame in {"spell", "trap"}
+        and "your opponent controls" in normalized_text
+    ):
         scores["boardbreaker"] += 1.0
-    if "take control of 1 monster your opponent controls" in normalized_text and "draw 2 cards" in normalized_text:
+    if (
+        "take control of 1 monster your opponent controls" in normalized_text
+        and "draw 2 cards" in normalized_text
+    ):
         scores["boardbreaker"] += 3.0
 
     if "cards you control" in normalized_text and (
-        "cannot be destroyed" in normalized_text or "cannot be targeted" in normalized_text
+        "cannot be destroyed" in normalized_text
+        or "cannot be targeted" in normalized_text
     ):
         scores["protection"] += 2.0
 
-    if "target 1 monster in your opponent's gy" in normalized_text and "effects are negated" in normalized_text:
+    if (
+        "target 1 monster in your opponent's gy" in normalized_text
+        and "effects are negated" in normalized_text
+    ):
         scores["protection"] += 3.5
-    if "declare 1 card name" in normalized_text and "negate its effects" in normalized_text:
+    if (
+        "declare 1 card name" in normalized_text
+        and "negate its effects" in normalized_text
+    ):
         scores["protection"] += 3.0
-    if "in response to this card's activation" in normalized_text and scores["boardbreaker"] > 0:
+    if (
+        "in response to this card's activation" in normalized_text
+        and scores["boardbreaker"] > 0
+    ):
         scores["boardbreaker"] += 1.0
     if "until the end of this turn" in normalized_text and scores["boardbreaker"] > 0:
         scores["boardbreaker"] += 1.0
         scores["floodgate"] = max(0.0, scores["floodgate"] - 3.0)
-    if "if you control no cards, you can activate this card from your hand" in normalized_text:
+    if (
+        "if you control no cards, you can activate this card from your hand"
+        in normalized_text
+    ):
         scores["handtrap"] += 2.0
         scores["boardbreaker"] = max(0.0, scores["boardbreaker"] - 1.5)
-    if "during either player's turn" in normalized_text and "special summon both this card from your hand" in normalized_text:
+    if (
+        "during either player's turn" in normalized_text
+        and "special summon both this card from your hand" in normalized_text
+    ):
         scores["handtrap"] += 4.0
     if "both players must set spell cards before activating them" in normalized_text:
         scores["floodgate"] += 2.0
@@ -190,7 +215,10 @@ def classify_non_engine_role(
         scores["floodgate"] += 2.0
     if "until the end of the next turn" in normalized_text and scores["protection"] > 0:
         scores["protection"] += 1.0
-    if "activate this card from your hand" in normalized_text and "battle phase" in normalized_text:
+    if (
+        "activate this card from your hand" in normalized_text
+        and "battle phase" in normalized_text
+    ):
         scores["boardbreaker"] += 3.5
         scores["handtrap"] = max(0.0, scores["handtrap"] - 4.0)
     if normalized_text == "none":
@@ -211,10 +239,14 @@ def classify_non_engine_role(
     if side_presence > main_presence + 10.0:
         scores["boardbreaker"] += 0.5
         scores["floodgate"] += 0.5
-    if main_presence >= side_presence and "monster" in normalized_type and (
-        "discard this card" in normalized_text
-        or "special summon this card from your hand" in normalized_text
-        or "quick effect" in normalized_text
+    if (
+        main_presence >= side_presence
+        and "monster" in normalized_type
+        and (
+            "discard this card" in normalized_text
+            or "special summon this card from your hand" in normalized_text
+            or "quick effect" in normalized_text
+        )
     ):
         scores["handtrap"] += 1.0
 

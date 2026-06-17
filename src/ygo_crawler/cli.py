@@ -18,10 +18,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="YGOPRODeck TCG crawler")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    init_db = subparsers.add_parser("init-db", help="Initialize the SQLite database schema")
+    init_db = subparsers.add_parser(
+        "init-db", help="Initialize the SQLite database schema"
+    )
     init_db.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
 
-    crawl_tournament = subparsers.add_parser("crawl-tournament", help="Crawl a single tournament page and linked decks")
+    crawl_tournament = subparsers.add_parser(
+        "crawl-tournament", help="Crawl a single tournament page and linked decks"
+    )
     crawl_tournament.add_argument("tournament_url")
     crawl_tournament.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
 
@@ -29,24 +33,36 @@ def build_parser() -> argparse.ArgumentParser:
         "crawl-category",
         help="Crawl the Tournament Meta Decks category page and linked deck pages",
     )
-    crawl_category.add_argument("category_url", nargs="?", default=DEFAULT_META_DECK_CATEGORY_URL)
-    crawl_category.add_argument("--pages", type=int, default=DEFAULT_INITIAL_CRAWL_PAGE_COUNT)
+    crawl_category.add_argument(
+        "category_url", nargs="?", default=DEFAULT_META_DECK_CATEGORY_URL
+    )
+    crawl_category.add_argument(
+        "--pages", type=int, default=DEFAULT_INITIAL_CRAWL_PAGE_COUNT
+    )
     crawl_category.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
 
     enrich_cards_parser = subparsers.add_parser(
         "enrich-cards",
         help="Enrich stored cards with YGOPRODeck card metadata such as archetype and type",
     )
-    enrich_cards_parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
-    enrich_cards_parser.add_argument("--batch-size", type=int, default=CARD_METADATA_BATCH_SIZE)
+    enrich_cards_parser.add_argument(
+        "--db-path", type=Path, default=DEFAULT_DATABASE_PATH
+    )
+    enrich_cards_parser.add_argument(
+        "--batch-size", type=int, default=CARD_METADATA_BATCH_SIZE
+    )
     enrich_cards_parser.add_argument("--limit", type=int)
 
     export_cards_csv_parser = subparsers.add_parser(
         "export-cards-csv",
         help="Export a flat CSV dump of deck cards plus card metadata for analysis",
     )
-    export_cards_csv_parser.add_argument("--db-path", type=Path, default=DEFAULT_DATABASE_PATH)
-    export_cards_csv_parser.add_argument("--output", type=Path, default=Path("exports/deck_cards_flat.csv"))
+    export_cards_csv_parser.add_argument(
+        "--db-path", type=Path, default=DEFAULT_DATABASE_PATH
+    )
+    export_cards_csv_parser.add_argument(
+        "--output", type=Path, default=Path("exports/deck_cards_flat.csv")
+    )
 
     return parser
 
@@ -77,7 +93,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "crawl-category":
         with default_storage(args.db_path) as storage:
             crawler = TournamentCrawler(storage)
-            summary = crawler.crawl_meta_category(args.category_url, page_count=args.pages)
+            summary = crawler.crawl_meta_category(
+                args.category_url, page_count=args.pages
+            )
         print(
             "Crawled category "
             f"{summary.category_url} across "
@@ -90,7 +108,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "enrich-cards":
-        summary = enrich_cards(args.db_path, batch_size=args.batch_size, limit=args.limit)
+        summary = enrich_cards(
+            args.db_path, batch_size=args.batch_size, limit=args.limit
+        )
         print(
             "Enriched card metadata for "
             f"{summary.enriched_count} cards from {summary.requested_count} requested passcodes "

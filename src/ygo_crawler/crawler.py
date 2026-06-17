@@ -67,7 +67,9 @@ class _ResolvedCategoryEntry:
 
 
 class TournamentCrawler:
-    def __init__(self, storage: SQLiteStorage, client: YGOProDeckClient | None = None) -> None:
+    def __init__(
+        self, storage: SQLiteStorage, client: YGOProDeckClient | None = None
+    ) -> None:
         self.storage = storage
         self.client = client
 
@@ -83,7 +85,9 @@ class TournamentCrawler:
 
         try:
             fetched_tournament = client.fetch(tournament_url)
-            parsed_tournament = parse_tournament_page(fetched_tournament.text, fetched_tournament.final_url)
+            parsed_tournament = parse_tournament_page(
+                fetched_tournament.text, fetched_tournament.final_url
+            )
 
             excluded_marker = find_excluded_marker(
                 parsed_tournament.tournament_name,
@@ -171,8 +175,12 @@ class TournamentCrawler:
 
                 fetched_deck = client.fetch(entry.deck_url)
                 parsed_deck = parse_deck_page(fetched_deck.text, fetched_deck.final_url)
-                deck_marker = find_excluded_marker(parsed_deck.deck_name, *parsed_deck.tags)
-                if deck_marker is not None or not is_allowed_deck(parsed_deck.deck_name, *parsed_deck.tags):
+                deck_marker = find_excluded_marker(
+                    parsed_deck.deck_name, *parsed_deck.tags
+                )
+                if deck_marker is not None or not is_allowed_deck(
+                    parsed_deck.deck_name, *parsed_deck.tags
+                ):
                     skipped_source_count += 1
                     self.storage.record_skipped_source(
                         SkippedSourceRecord(
@@ -209,7 +217,9 @@ class TournamentCrawler:
                 )
 
                 named_cards = [
-                    CardRecord(card_passcode=card.card_passcode, canonical_name=card.card_name)
+                    CardRecord(
+                        card_passcode=card.card_passcode, canonical_name=card.card_name
+                    )
                     for card in parsed_deck.cards
                     if card.card_name
                 ]
@@ -289,7 +299,9 @@ class TournamentCrawler:
             normalized_page_size = max(page_size, 1)
 
             for page_index in range(normalized_page_count):
-                api_url = _build_meta_deck_api_url(offset=page_index * normalized_page_size, limit=normalized_page_size)
+                api_url = _build_meta_deck_api_url(
+                    offset=page_index * normalized_page_size, limit=normalized_page_size
+                )
                 fetched_listing_page = client.fetch(api_url)
                 listings = parse_meta_deck_api_page(fetched_listing_page.text)
                 if not listings:
@@ -301,7 +313,9 @@ class TournamentCrawler:
                 for listing in listings:
                     try:
                         fetched_deck = client.fetch(listing.deck_url)
-                        parsed_deck = parse_deck_page(fetched_deck.text, fetched_deck.final_url)
+                        parsed_deck = parse_deck_page(
+                            fetched_deck.text, fetched_deck.final_url
+                        )
                     except Exception as exc:
                         skipped_source_count += 1
                         self.storage.record_skipped_source(
@@ -316,8 +330,12 @@ class TournamentCrawler:
                         )
                         continue
 
-                    deck_marker = find_excluded_marker(parsed_deck.deck_name, *parsed_deck.tags)
-                    if deck_marker is not None or not is_allowed_deck(parsed_deck.deck_name, *parsed_deck.tags):
+                    deck_marker = find_excluded_marker(
+                        parsed_deck.deck_name, *parsed_deck.tags
+                    )
+                    if deck_marker is not None or not is_allowed_deck(
+                        parsed_deck.deck_name, *parsed_deck.tags
+                    ):
                         skipped_source_count += 1
                         self.storage.record_skipped_source(
                             SkippedSourceRecord(
@@ -332,11 +350,16 @@ class TournamentCrawler:
                         continue
 
                     fallback_participants_count = listing.participants_count
-                    if fallback_participants_count is None and parsed_deck.tournament_url is not None:
-                        fallback_participants_count = _load_tournament_participants_count(
-                            client,
-                            parsed_deck.tournament_url,
-                            tournament_participants_cache,
+                    if (
+                        fallback_participants_count is None
+                        and parsed_deck.tournament_url is not None
+                    ):
+                        fallback_participants_count = (
+                            _load_tournament_participants_count(
+                                client,
+                                parsed_deck.tournament_url,
+                                tournament_participants_cache,
+                            )
                         )
 
                     resolved_entry = _resolve_category_entry(
@@ -418,7 +441,10 @@ class TournamentCrawler:
                     )
 
                     named_cards = [
-                        CardRecord(card_passcode=card.card_passcode, canonical_name=card.card_name)
+                        CardRecord(
+                            card_passcode=card.card_passcode,
+                            canonical_name=card.card_name,
+                        )
                         for card in parsed_deck.cards
                         if card.card_name
                     ]
@@ -448,7 +474,11 @@ class TournamentCrawler:
                 discovered_tournament_count=len(seen_tournament_names),
                 crawled_deck_count=crawled_deck_count,
                 skipped_source_count=skipped_source_count,
-                note=None if crawled_deck_count else "No deck pages stored from category crawl",
+                note=(
+                    None
+                    if crawled_deck_count
+                    else "No deck pages stored from category crawl"
+                ),
             )
 
             return CategoryCrawlSummary(
@@ -504,11 +534,18 @@ def _resolve_category_entry(
     tournament_slug = parsed_deck.tournament_slug
     tournament_url = parsed_deck.tournament_url
     tournament_date = parsed_deck.tournament_date
-    if tournament_site_id is None or tournament_slug is None or tournament_url is None or tournament_date is None:
+    if (
+        tournament_site_id is None
+        or tournament_slug is None
+        or tournament_url is None
+        or tournament_date is None
+    ):
         return None
 
     placement_label = parsed_deck.placement_label or listing.placement_label
-    placement_sort_value = parsed_deck.placement_sort_value or listing.placement_sort_value
+    placement_sort_value = (
+        parsed_deck.placement_sort_value or listing.placement_sort_value
+    )
     placement_group_size = parsed_deck.placement_group_size
     if placement_label is None or placement_sort_value is None:
         return None
@@ -551,7 +588,9 @@ def _load_tournament_participants_count(
     if tournament_url not in cache:
         try:
             fetched_tournament = client.fetch(tournament_url)
-            parsed_tournament = parse_tournament_page(fetched_tournament.text, fetched_tournament.final_url)
+            parsed_tournament = parse_tournament_page(
+                fetched_tournament.text, fetched_tournament.final_url
+            )
         except Exception:
             cache[tournament_url] = None
         else:

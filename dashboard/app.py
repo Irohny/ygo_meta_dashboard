@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 import streamlit as st
+from pathlib import Path
 
-from ygo_crawler.dashboard_cache import load_dashboard_home_page_data, warm_dashboard_global_caches
+from ygo_crawler.dashboard_cache import (
+    load_dashboard_home_page_data,
+    warm_dashboard_global_caches,
+)
 from ygo_crawler.dashboard_filters import render_dashboard_date_filter
-from ygo_crawler.dashboard_queries import DashboardKpis, DashboardRepository, DatabaseSummary, resolve_dashboard_db_path
+from ygo_crawler.dashboard_queries import (
+    DashboardKpis,
+    DashboardRepository,
+    DatabaseSummary,
+    resolve_dashboard_db_path,
+)
 
 
-def _drop_columns(rows: list[dict[str, object]], columns: set[str]) -> list[dict[str, object]]:
-    return [{key: value for key, value in row.items() if key not in columns} for row in rows]
+def _drop_columns(
+    rows: list[dict[str, object]], columns: set[str]
+) -> list[dict[str, object]]:
+    return [
+        {key: value for key, value in row.items() if key not in columns} for row in rows
+    ]
 
 
 def _load_home_page_data(
@@ -19,7 +32,9 @@ def _load_home_page_data(
     return load_dashboard_home_page_data(repository, start_date, end_date)
 
 
-def _render_summary_section(kpis: DashboardKpis, database_summary: DatabaseSummary) -> DatabaseSummary:
+def _render_summary_section(
+    kpis: DashboardKpis, database_summary: DatabaseSummary
+) -> DatabaseSummary:
     metric_col_1, metric_col_2 = st.columns(2)
     metric_col_1.metric("Gecrawlte Decks", kpis.crawled_decks)
     metric_col_2.metric("Unterschiedliche Decknamen", kpis.distinct_deck_names)
@@ -27,7 +42,7 @@ def _render_summary_section(kpis: DashboardKpis, database_summary: DatabaseSumma
 
 
 def _render_top_deck_names_section(aggregate_rows: list[dict[str, object]]) -> None:
-    st.subheader("Häufigste Decknamen")
+    st.subheader("🏆 Häufigste Decknamen")
     if not aggregate_rows:
         return
 
@@ -58,9 +73,11 @@ def _render_recent_decks_section(
     skip_summary: list[dict[str, object]],
     skipped_sources: list[dict[str, object]],
 ) -> None:
-    st.subheader("Zuletzt geladene Decks")
+    st.subheader("📋 Zuletzt geladene Decks")
     if not deck_rows:
-        st.warning("Aktuell sind noch keine Decks gespeichert. Die Datenbank enthaelt zwar Crawl-Daten, aber keine persistierten Deckseiten.")
+        st.warning(
+            "Aktuell sind noch keine Decks gespeichert. Die Datenbank enthaelt zwar Crawl-Daten, aber keine persistierten Deckseiten."
+        )
 
         info_col_1, info_col_2, info_col_3, info_col_4 = st.columns(4)
         info_col_1.metric("Turniere", database_summary.tournaments)
@@ -70,7 +87,11 @@ def _render_recent_decks_section(
 
         if tournaments:
             st.markdown("**Gespeicherte Turniere**")
-            st.dataframe(_drop_columns(tournaments, {"country"}), hide_index=True, width="stretch")
+            st.dataframe(
+                _drop_columns(tournaments, {"country"}),
+                hide_index=True,
+                width="stretch",
+            )
 
         if skip_summary:
             st.markdown("**Warum keine Decks gespeichert wurden**")
@@ -104,13 +125,11 @@ def _render_recent_decks_section(
     )
 
 
-def main() -> None:
-    st.set_page_config(page_title="YGOPRODeck Dashboard", layout="wide")
+def _render_home_page() -> None:
+    st.title("📊 YGOPRODeck TCG Dashboard")
 
     database_path = resolve_dashboard_db_path()
     repository = DashboardRepository(database_path)
-
-    st.title("YGOPRODeck TCG Dashboard")
 
     status_message = repository.status_message()
     if status_message is not None:
@@ -121,7 +140,9 @@ def main() -> None:
     page_data = _load_home_page_data(repository, start_date, end_date)
     warm_dashboard_global_caches(repository, start_date=start_date, end_date=end_date)
 
-    database_summary = _render_summary_section(page_data["kpis"], page_data["database_summary"])
+    database_summary = _render_summary_section(
+        page_data["kpis"], page_data["database_summary"]
+    )
     _render_top_deck_names_section(page_data["aggregate_rows"])
     _render_recent_decks_section(
         database_summary,
@@ -130,6 +151,49 @@ def main() -> None:
         page_data["skip_summary"],
         page_data["skipped_sources"],
     )
+
+
+def main() -> None:
+    st.set_page_config(page_title="YGOPRODeck Dashboard", layout="wide")
+
+    pages_root = Path(__file__).parent / "pages"
+    navigation = st.navigation(
+        [
+            st.Page(_render_home_page, title="Dashboard", icon=":material/dashboard:"),
+            st.Page(
+                pages_root / "1_Decklisten.py",
+                title="Decklisten",
+                icon=":material/stack:",
+            ),
+            st.Page(
+                pages_root / "2_Aggregierte_Decks.py",
+                title="Aggregierte Decks",
+                icon=":material/analytics:",
+            ),
+            st.Page(
+                pages_root / "3_Deckgruppen_Details.py",
+                title="Deckgruppen Details",
+                icon=":material/manage_search:",
+            ),
+            st.Page(
+                pages_root / "4_Non_Engine.py",
+                title="Non-Engine",
+                icon=":material/tune:",
+            ),
+            st.Page(
+                pages_root / "5_Langzeitdaten.py",
+                title="Langzeitdaten",
+                icon=":material/trending_up:",
+            ),
+            st.Page(
+                pages_root / "6_Deckbuilder.py",
+                title="Deckbuilder",
+                icon=":material/construction:",
+            ),
+        ],
+        position="top",
+    )
+    navigation.run()
 
 
 main()

@@ -46,7 +46,9 @@ class YGOProDeckClient:
             text=response.text,
         )
 
-    def fetch_json(self, url: str, *, params: dict[str, Any] | None = None) -> dict[str, Any] | list[Any]:
+    def fetch_json(
+        self, url: str, *, params: dict[str, Any] | None = None
+    ) -> dict[str, Any] | list[Any]:
         response = self._client.get(url, params=params)
         response.raise_for_status()
         return response.json()
@@ -54,7 +56,10 @@ class YGOProDeckClient:
     def fetch_card_info_by_ids(self, passcodes: list[int]) -> list[dict[str, Any]]:
         if not passcodes:
             return []
-        payload = self.fetch_json(CARD_INFO_API_URL, params={"id": ",".join(str(passcode) for passcode in passcodes)})
+        payload = self.fetch_json(
+            CARD_INFO_API_URL,
+            params={"id": ",".join(str(passcode) for passcode in passcodes)},
+        )
         if not isinstance(payload, dict):
             raise ValueError("Unexpected card info API response format")
         data = payload.get("data", [])

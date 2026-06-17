@@ -8,11 +8,12 @@ import streamlit as st
 
 from .dashboard_queries import DashboardRepository
 
-
 WARMUP_STATE_KEY = "dashboard_cache_warmup_key"
 
 
-def get_dashboard_data_signature(database_path: str | Path) -> tuple[str, int | None, int | None]:
+def get_dashboard_data_signature(
+    database_path: str | Path,
+) -> tuple[str, int | None, int | None]:
     normalized_path = _normalize_database_path(database_path)
     try:
         stat_result = Path(normalized_path).stat()
@@ -30,7 +31,9 @@ def normalize_dashboard_date_value(value: date | str | None) -> str | None:
     return normalized or None
 
 
-def load_available_date_range(repository: DashboardRepository) -> tuple[date, date] | None:
+def load_available_date_range(
+    repository: DashboardRepository,
+) -> tuple[date, date] | None:
     database_path = _normalize_database_path(repository.database_path)
     database_signature = get_dashboard_data_signature(database_path)
     return _load_available_date_range_cached(database_path, database_signature)
@@ -44,10 +47,12 @@ def load_dashboard_home_page_data(
     recent_limit: int = 15,
     top_limit: int = 15,
 ) -> dict[str, Any]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_dashboard_home_page_data_cached(
         database_path,
@@ -66,10 +71,12 @@ def load_deck_summaries(
     start_date: date | str | None,
     end_date: date | str | None,
 ) -> list[dict[str, Any]]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_deck_summaries_cached(
         database_path,
@@ -87,10 +94,12 @@ def load_deck_name_aggregates(
     start_date: date | str | None,
     end_date: date | str | None,
 ) -> list[dict[str, Any]]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_deck_name_aggregates_cached(
         database_path,
@@ -108,10 +117,12 @@ def load_deck_name_aggregates_extended(
     start_date: date | str | None,
     end_date: date | str | None,
 ) -> list[dict[str, Any]]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_deck_name_aggregates_extended_cached(
         database_path,
@@ -132,10 +143,12 @@ def load_aggregate_plot_data(
     start_date: date | str | None,
     end_date: date | str | None,
 ) -> dict[str, Any]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_aggregate_plot_data_cached(
         database_path,
@@ -156,10 +169,12 @@ def load_selected_deck_data(
     start_date: date | str | None,
     end_date: date | str | None,
 ) -> dict[str, Any]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_selected_deck_data_cached(
         database_path,
@@ -177,10 +192,12 @@ def load_group_page_data(
     start_date: date | str | None,
     end_date: date | str | None,
 ) -> dict[str, Any]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_group_page_data_cached(
         database_path,
@@ -197,10 +214,12 @@ def load_non_engine_page_bundle(
     start_date: date | str | None,
     end_date: date | str | None,
 ) -> dict[str, Any]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_non_engine_page_bundle_cached(
         database_path,
@@ -216,10 +235,12 @@ def load_longterm_page_data(
     start_date: date | str | None,
     end_date: date | str | None,
 ) -> dict[str, Any]:
-    database_path, database_signature, normalized_start_date, normalized_end_date = _build_cache_context(
-        repository,
-        start_date,
-        end_date,
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(
+            repository,
+            start_date,
+            end_date,
+        )
     )
     return _load_longterm_page_data_cached(
         database_path,
@@ -315,11 +336,15 @@ def _load_dashboard_home_page_data_cached(
         }
 
     repository = DashboardRepository(database_path)
-    deck_rows = repository.list_deck_summaries(limit=recent_limit, start_date=start_date, end_date=end_date)
+    deck_rows = repository.list_deck_summaries(
+        limit=recent_limit, start_date=start_date, end_date=end_date
+    )
     page_data: dict[str, Any] = {
         "kpis": repository.get_kpis(start_date, end_date),
         "database_summary": repository.get_database_summary(start_date, end_date),
-        "aggregate_rows": repository.list_deck_name_aggregates(limit=top_limit, start_date=start_date, end_date=end_date),
+        "aggregate_rows": repository.list_deck_name_aggregates(
+            limit=top_limit, start_date=start_date, end_date=end_date
+        ),
         "deck_rows": deck_rows,
         "tournaments": [],
         "skip_summary": [],
@@ -328,7 +353,9 @@ def _load_dashboard_home_page_data_cached(
     if deck_rows:
         return page_data
 
-    page_data["tournaments"] = repository.list_tournaments(limit=10, start_date=start_date, end_date=end_date)
+    page_data["tournaments"] = repository.list_tournaments(
+        limit=10, start_date=start_date, end_date=end_date
+    )
     page_data["skip_summary"] = repository.list_skip_reason_summary()
     page_data["skipped_sources"] = repository.list_skipped_sources(limit=20)
     return page_data
@@ -455,14 +482,30 @@ def _load_selected_deck_data_cached(
 
     repository = DashboardRepository(database_path)
     return {
-        "selected_deck": repository.get_deck_summary_extended(selected_deck_id, start_date, end_date),
-        "role_metrics": repository.get_deck_role_metrics(selected_deck_id, start_date, end_date),
-        "deck_section_composition": repository.get_deck_section_composition(selected_deck_id, start_date, end_date),
-        "deck_vs_group_comparison": repository.get_deck_vs_group_section_comparison(selected_deck_id, start_date, end_date),
-        "role_cost_distribution": repository.get_deck_role_cost_distribution(selected_deck_id, start_date, end_date),
-        "copy_count_histogram": repository.get_deck_copy_count_histogram(selected_deck_id, start_date, end_date),
-        "deck_heatmap_rows": repository.get_deck_section_heatmap_rows(selected_deck_id, start_date, end_date),
-        "deck_cards": repository.get_deck_cards_detailed(selected_deck_id, start_date, end_date),
+        "selected_deck": repository.get_deck_summary_extended(
+            selected_deck_id, start_date, end_date
+        ),
+        "role_metrics": repository.get_deck_role_metrics(
+            selected_deck_id, start_date, end_date
+        ),
+        "deck_section_composition": repository.get_deck_section_composition(
+            selected_deck_id, start_date, end_date
+        ),
+        "deck_vs_group_comparison": repository.get_deck_vs_group_section_comparison(
+            selected_deck_id, start_date, end_date
+        ),
+        "role_cost_distribution": repository.get_deck_role_cost_distribution(
+            selected_deck_id, start_date, end_date
+        ),
+        "copy_count_histogram": repository.get_deck_copy_count_histogram(
+            selected_deck_id, start_date, end_date
+        ),
+        "deck_heatmap_rows": repository.get_deck_section_heatmap_rows(
+            selected_deck_id, start_date, end_date
+        ),
+        "deck_cards": repository.get_deck_cards_detailed(
+            selected_deck_id, start_date, end_date
+        ),
     }
 
 
@@ -479,10 +522,18 @@ def _load_group_page_data_cached(
 
     repository = DashboardRepository(database_path)
     return {
-        "selected_aggregate": repository.get_deck_name_aggregate_extended(selected_deck_name, start_date, end_date),
-        "group_role_benchmarks": repository.get_deck_group_role_benchmarks(selected_deck_name, start_date, end_date),
-        "deck_section_composition": repository.get_deck_group_section_composition(selected_deck_name, start_date, end_date),
-        "aggregated_cards": repository.get_aggregated_deck_cards(selected_deck_name, start_date, end_date),
+        "selected_aggregate": repository.get_deck_name_aggregate_extended(
+            selected_deck_name, start_date, end_date
+        ),
+        "group_role_benchmarks": repository.get_deck_group_role_benchmarks(
+            selected_deck_name, start_date, end_date
+        ),
+        "deck_section_composition": repository.get_deck_group_section_composition(
+            selected_deck_name, start_date, end_date
+        ),
+        "aggregated_cards": repository.get_aggregated_deck_cards(
+            selected_deck_name, start_date, end_date
+        ),
         "deck_group_trend_rows": repository.get_deck_name_trend_rows(
             deck_names=[selected_deck_name],
             start_date=start_date,
@@ -542,9 +593,15 @@ def _load_non_engine_page_bundle_cached(
             start_date=start_date,
             end_date=end_date,
         ),
-        "monthly_main_share_rows": repository.get_monthly_main_deck_share_trends(start_date=start_date, end_date=end_date),
-        "monthly_side_share_rows": repository.get_monthly_side_deck_share_trends(start_date=start_date, end_date=end_date),
-        "monthly_subrole_rows": repository.get_monthly_non_engine_subrole_trends(start_date=start_date, end_date=end_date),
+        "monthly_main_share_rows": repository.get_monthly_main_deck_share_trends(
+            start_date=start_date, end_date=end_date
+        ),
+        "monthly_side_share_rows": repository.get_monthly_side_deck_share_trends(
+            start_date=start_date, end_date=end_date
+        ),
+        "monthly_subrole_rows": repository.get_monthly_non_engine_subrole_trends(
+            start_date=start_date, end_date=end_date
+        ),
         "monthly_section_balance_rows": repository.get_monthly_section_engine_vs_non_engine_trends(
             start_date=start_date,
             end_date=end_date,
@@ -572,11 +629,199 @@ def _load_longterm_page_data_cached(
 
     repository = DashboardRepository(database_path)
     return {
-        "trend_rows": repository.get_monthly_main_deck_share_trends(start_date=start_date, end_date=end_date),
-        "side_trend_rows": repository.get_monthly_side_deck_share_trends(start_date=start_date, end_date=end_date),
-        "subrole_trend_rows": repository.get_monthly_non_engine_subrole_trends(start_date=start_date, end_date=end_date),
-        "section_trend_rows": repository.get_monthly_section_engine_vs_non_engine_trends(start_date=start_date, end_date=end_date),
-        "new_deck_name_rows": repository.get_monthly_new_deck_name_share_trends(start_date=start_date, end_date=end_date),
-        "concentration_rows": repository.get_monthly_deck_result_concentration_trends(start_date=start_date, end_date=end_date),
-        "top_deck_cost_rows": repository.get_monthly_top_deck_cost_trends(start_date=start_date, end_date=end_date),
+        "trend_rows": repository.get_monthly_main_deck_share_trends(
+            start_date=start_date, end_date=end_date
+        ),
+        "side_trend_rows": repository.get_monthly_side_deck_share_trends(
+            start_date=start_date, end_date=end_date
+        ),
+        "subrole_trend_rows": repository.get_monthly_non_engine_subrole_trends(
+            start_date=start_date, end_date=end_date
+        ),
+        "section_trend_rows": repository.get_monthly_section_engine_vs_non_engine_trends(
+            start_date=start_date, end_date=end_date
+        ),
+        "new_deck_name_rows": repository.get_monthly_new_deck_name_share_trends(
+            start_date=start_date, end_date=end_date
+        ),
+        "concentration_rows": repository.get_monthly_deck_result_concentration_trends(
+            start_date=start_date, end_date=end_date
+        ),
+        "top_deck_cost_rows": repository.get_monthly_top_deck_cost_trends(
+            start_date=start_date, end_date=end_date
+        ),
     }
+
+
+# ---------------------------------------------------------------------------
+# Deckbuilder-specific loaders
+# ---------------------------------------------------------------------------
+
+
+def load_search_cards(
+    repository: DashboardRepository,
+    *,
+    query: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    database_path = _normalize_database_path(repository.database_path)
+    database_signature = get_dashboard_data_signature(database_path)
+    return _load_search_cards_cached(database_path, database_signature, query, limit)
+
+
+def load_deck_group_starter(
+    repository: DashboardRepository,
+    *,
+    deck_name: str,
+    start_date: date | str | None,
+    end_date: date | str | None,
+    main_target: int = 40,
+    extra_target: int = 15,
+    side_target: int = 15,
+) -> dict[str, list[dict[str, Any]]]:
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(repository, start_date, end_date)
+    )
+    return _load_deck_group_starter_cached(
+        database_path,
+        database_signature,
+        deck_name,
+        normalized_start_date,
+        normalized_end_date,
+        main_target,
+        extra_target,
+        side_target,
+        2,  # schema_version – bump to bust stale entries lacking card_type/card_archetype
+    )
+
+
+def load_underused_cards_for_deck_group(
+    repository: DashboardRepository,
+    *,
+    deck_name: str,
+    start_date: date | str | None,
+    end_date: date | str | None,
+    limit: int = 40,
+) -> list[dict[str, Any]]:
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(repository, start_date, end_date)
+    )
+    return _load_underused_cards_for_deck_group_cached(
+        database_path,
+        database_signature,
+        deck_name,
+        normalized_start_date,
+        normalized_end_date,
+        limit,
+    )
+
+
+def load_deck_group_card_options(
+    repository: DashboardRepository,
+    *,
+    deck_name: str,
+    start_date: date | str | None,
+    end_date: date | str | None,
+) -> list[dict[str, Any]]:
+    database_path, database_signature, normalized_start_date, normalized_end_date = (
+        _build_cache_context(repository, start_date, end_date)
+    )
+    return _load_deck_group_card_options_cached(
+        database_path,
+        database_signature,
+        deck_name,
+        normalized_start_date,
+        normalized_end_date,
+    )
+
+
+@st.cache_data(show_spinner=False, max_entries=128)
+def _load_search_cards_cached(
+    database_path: str,
+    database_signature: tuple[str, int | None, int | None],
+    query: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if database_signature[1] is None or not query.strip():
+        return []
+    return DashboardRepository(database_path).search_cards(query, limit=limit)
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def _load_deck_group_starter_cached(
+    database_path: str,
+    database_signature: tuple[str, int | None, int | None],
+    deck_name: str,
+    start_date: str | None,
+    end_date: str | None,
+    main_target: int,
+    extra_target: int,
+    side_target: int,
+    schema_version: int = 1,  # noqa: ARG001 – used as cache-key buster only
+) -> dict[str, list[dict[str, Any]]]:
+    if database_signature[1] is None:
+        return {"main": [], "extra": [], "side": []}
+    return DashboardRepository(database_path).build_deck_group_starter(
+        deck_name,
+        start_date=start_date,
+        end_date=end_date,
+        main_target=main_target,
+        extra_target=extra_target,
+        side_target=side_target,
+    )
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def _load_underused_cards_for_deck_group_cached(
+    database_path: str,
+    database_signature: tuple[str, int | None, int | None],
+    deck_name: str,
+    start_date: str | None,
+    end_date: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if database_signature[1] is None:
+        return []
+    return DashboardRepository(database_path).list_underused_cards_for_deck_group(
+        deck_name,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+    )
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def _load_deck_group_card_options_cached(
+    database_path: str,
+    database_signature: tuple[str, int | None, int | None],
+    deck_name: str,
+    start_date: str | None,
+    end_date: str | None,
+) -> list[dict[str, Any]]:
+    if database_signature[1] is None:
+        return []
+
+    grouped_rows = DashboardRepository(database_path).get_aggregated_deck_cards(
+        deck_name,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    rows: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, str]] = set()
+    for section, section_rows in grouped_rows.items():
+        for row in section_rows:
+            card_name = str(row.get("Karte") or row.get("card_name") or "").strip()
+            card_passcode = row.get("card_passcode")
+            normalized_name = card_name.casefold()
+            dedupe_key = (
+                str(int(card_passcode)) if card_passcode is not None else "",
+                normalized_name,
+            )
+            if not card_name or dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            entry = dict(row)
+            entry["section"] = section
+            rows.append(entry)
+    return rows
